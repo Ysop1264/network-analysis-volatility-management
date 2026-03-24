@@ -29,3 +29,5 @@ Also, the code is really crowded right now, I have added as many comments as I t
 DISCLAIMER: I did use Chat quite a bit for this step, but most of it is because we are just hard-coding the steps outlined in the Engel, Ledoit, and Wolf (2019) paper. I have checked to ensure that the formulas suggested are the actual formulas used, and the estimation windows are all set up properly. At this point, I can explain what the code does, but I still need to conduct some checks before I can confidently move onto the next step. 
 This is definitely the most intense part of the code, and probably will take the longest finish but the rest of the methodology can honestly be finished in one evening.
 So hopefully, we can get this part done tomorrow, and I can confidently say that I understand every single part of it. I can guarantee and write up for this part after the non-linear shrinkage part and finalising all functions
+
+24/03/2025 - Yadhu (23:57): Nvm, added the nonlinear shrinkage part. Everything runs for now, but it could all be fake, and I might be hallucinating
