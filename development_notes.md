@@ -17,3 +17,5 @@ Yadhu (13:40): Removed trading days, cause not needed to calculate RV. Added rv_
 Kornel (17:30): Chenged the section of Benchmarks for 'Functions' with function definitions. Added benchmarks section, where both the MVE strategy as well as equally weighted buy-and-hold are implemented. Still need to verify the code and make sure of few Moreira and Muir approaches, but largerly it should be it.
 
 24/03/2026 - Yadhu (19:00): Added a function that estimates GARCH(1,1) for a single return series. Added the rugarch library (and two others which we do not need any longer, and will remove in next commit).
+
+24/03/2026 - Zhang (19:24): Just downloaded everything and cloned. Failed to download miktek tho so maybe wont be able to code overleaf here but i can do it on overleaf itself. 
