@@ -348,6 +348,100 @@ system.time({
 sapply(garch_results_test, function(x) sum(is.na(x$sigma)))
 sapply(garch_results_test, nrow)
 
+# Constructing standardised residual matrix Z and Diagonal volatility matrix D, calculated
+# in GARCH functions already
+build_garch_blocks <- function(garch_results_list) {
+  # Extracting reference dates from the first factors
+  ref_dates <- garch_results_list[[1]]$date
+  
+  # Checking if all factors have identical dates
+  same_dates <- all(sapply(garch_results_list, function(x) identical(x$date, ref_dates)))
+  if (!same_dates) {
+    stop("Dates are not aligned across assets.")
+  }
+  
+  # Loop over each factor, extract standardised residuals, then put in a matrix
+  Z <- sapply(garch_results_list, function(x) x$z)
+  SIGMA <- sapply(garch_results_list, function(x) x$sigma)
+  MU <- sapply(garch_results_list, function(x) x$mu)
+  RESID <- sapply(garch_results_list, function(x) x$resid)
+  
+  Z <- as.matrix(Z)
+  SIGMA <- as.matrix(SIGMA)
+  MU <- as.matrix(MU)
+  RESID <- as.matrix(RESID)
+  
+  # Setting column names
+  colnames(Z) <- names(garch_results_list)
+  colnames(SIGMA) <- names(garch_results_list)
+  colnames(MU) <- names(garch_results_list)
+  colnames(RESID) <- names(garch_results_list)
+  
+  # Setting each row to a trading day
+  rownames(Z) <- as.character(ref_dates)
+  rownames(SIGMA) <- as.character(ref_dates)
+  rownames(MU) <- as.character(ref_dates)
+  rownames(RESID) <- as.character(ref_dates)
+  
+  list(
+    dates = ref_dates,
+    Z = Z,
+    SIGMA = SIGMA,
+    MU = MU,
+    RESID = RESID
+  )
+}
+
+garch_blocks <- build_garch_blocks(garch_results_test)
+
+Z_block <- garch_blocks$Z
+SIGMA_block <- garch_blocks$SIGMA
+MU_block <- garch_blocks$MU
+RESID_block <- garch_blocks$RESID
+dates_block <- garch_blocks$dates
+
+# Dimension check
+dim(Z_block)
+dim(SIGMA_block)
+dim(MU_block)
+dim(RESID_block)
+
+identical(dim(Z_block), dim(SIGMA_block))
+identical(dim(Z_block), dim(MU_block))
+identical(dim(Z_block), dim(RESID_block))
+
+head(rownames(Z_block))
+head(rownames(SIGMA_block))
+head(colnames(Z_block))
+
+# Missing value check
+sum(is.na(Z_block))
+sum(is.na(SIGMA_block))
+sum(is.na(MU_block))
+sum(is.na(RESID_block))
+
+sum(!is.finite(Z_block))
+sum(!is.finite(SIGMA_block))
+sum(!is.finite(MU_block))
+sum(!is.finite(RESID_block))
+
+# Sigma positivity check
+summary(as.vector(SIGMA_block))
+sum(SIGMA_block <= 0)
+
+# Identitiy check
+max(abs(Z_block - (RESID_block / SIGMA_block)), na.rm = TRUE)
+
+# Standardization checks (check if mean and sd are approx 0 and 1)
+print(mean(as.vector(Z_block), na.rm = TRUE))
+print(sd(as.vector(Z_block), na.rm = TRUE))
+print(summary(colMeans(Z_block, na.rm = TRUE)))
+print(summary(apply(Z_block, 2, sd, na.rm = TRUE)))
+
+# Extreme values
+print(max(abs(Z_block), na.rm = TRUE))
+print(quantile(abs(Z_block), probs = c(0.90, 0.95, 0.99, 0.999), na.rm = TRUE))
+
 # =================================================
 # Benchmarks
 # =================================================
