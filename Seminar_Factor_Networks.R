@@ -9,7 +9,9 @@
 # install.packages("lmtest")
 # install.packages("lubridate")
 # install.packages("nlshrink")
-
+# install.packages("rugarch")
+# install.packages("xts")
+# install.packages("zoo")
 #####
 
 library(tidyverse)
@@ -22,6 +24,9 @@ library(sandwich)
 library(lmtest)
 library(lubridate)
 library(nlshrink)
+library(rugarch)
+library(xts)
+library(zoo)
 
 # DATA download and transformation
 start_date <- as.Date("1971-01-01")
@@ -68,8 +73,6 @@ managed_portfolios <- factors_joined_excess |> select(-risk_free)
 
 print(head(managed_portfolios))
 
-
-
 # =================================================
 # Functions
 # =================================================
@@ -113,7 +116,89 @@ rv_monthly <- managed_portfolios %>%
 print(head(rv_monthly))
 print(tail(rv_monthly))
 
+# DCC-NL Estimation for Covariance Matrix
+# Fitting univariate GARCH(1,1) 
+# Function to fit GARCH(1,1) for one return series on an expanding window (daily estimation)
+fit_garch_expanding <- function(
+  ret, dates = NULL, 
+  init_window = 504, # 2 trading years approx
+  refit_on = c("month_end", "every_day"),
+  garch_order = c(1,1),
+  arma_order = c(0,0),
+  distribution = "norm"
+  ) {
+  # Handling inputs
+  ret <- as.numeric(ret)
+  dates <- as.Date(dates)
 
+  n <- length(ret)
+  if (n <= init_window) {
+    stop("Series shorter than initial window.")
+  }
+
+  # Specifying GARCH model
+  spec <- ugarchspec(
+    variance.model = list(
+      model = "sGARCH", garchOrder = garch_order
+    ), mean.model = list(
+      armaOrder = arma_order,
+      include.mean = TRUE
+    ), 
+    distribution.model = distribution
+  )
+
+  # Storing results
+  results <- vector("list", n - init_window)
+
+  # Expanding estimation
+  for (t in (init_window):(n - 1)){
+    # The set of insample returns
+    insample_ret <- ret[1:t]
+
+    # Fitting GARCH based on insample data
+    fit <- ugarchfit(spec = spec, data = insample_ret, solver = "Hybrid")
+
+    # To catch errora
+    if (is.null(fit)) {
+      results[[t - init_window + 1]] <- data.frame(
+        date = dates[t + 1],
+        mu = NA_real_,
+        sigma = NA_real_,
+        sigma2 = NA_real_,
+        resid = NA_real_,
+        z = NA_real_,
+        stringsAsFactors = FALSE
+      )
+      next
+    }
+  }
+
+  # 1-step ahead forecast
+  fc <- ugarchforecast(fit, n.ahead = 1)
+  mu_fc <- as.numeric(fitted(fc))
+  sigma_fc <- as.numeric(sigma(fc))
+  sigma2_fc <- sigma_fc^2
+
+  # Realised next return
+  r_next <- ret[t + 1]
+
+  # standardized residual (for DCC later)
+    z_next <- (r_next - mu_fc) / sigma_fc
+
+    results[[t - init_window + 1]] <- data.frame(
+      date = dates[t + 1],
+      mu = mu_fc,
+      sigma = sigma_fc,
+      sigma2 = sigma2_fc,
+      resid = r_next - mu_fc,
+      z = z_next,
+      stringsAsFactors = FALSE
+    )
+
+  out <- do.call(rbind, results)
+
+  return(out)
+}
 
 
 
