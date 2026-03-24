@@ -62,3 +62,33 @@ factors_joined_excess <- factors_joined |>
 managed_portfolios <- factors_joined_excess |> select(-risk_free)
 
 print(managed_portfolios$date.count())
+
+# =================================================
+# Benchmarks
+# =================================================
+
+# Defining the estimation sample
+start_date_estimation <- as.Date("1971-01-01")
+end_date_estimation <- as.Date("1973-01-01")
+
+
+#' Compute the MVE static weights
+#' 
+#' 
+#' @param mu Vector of means
+#' @param sigma Variance-covariance matrix of returns
+#' @return Solved weights b
+compute_MVE_weights <- function(mu, sigma){
+  b <- solve(sigma, mu)/ sqrt(as.numeric(t(mu)%*%solve(sigma)%*%mu))
+  return (b)
+}
+
+#' Computes the Sharpe Ratio of the returns
+#' 
+#' 
+#' @param r Vector of returns
+#' @return Sharpe Ratio
+compute_SR <- function(r){
+  SR = mean(r)/sd(r)
+  return(SR)
+}
