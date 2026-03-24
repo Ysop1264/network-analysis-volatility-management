@@ -114,95 +114,207 @@ print(tail(rv_monthly))
 
 # DCC-NL Estimation for Covariance Matrix
 # Fitting univariate GARCH(1,1) 
-# Function to fit GARCH(1,1) for one return series on an expanding window (daily estimation)
-fit_garch_expanding_daily <- function(
-  ret, dates = NULL, 
-  init_window = 504, # 2 trading years approx
-  refit_on = c("month_end", "every_day"),
-  garch_order = c(1,1),
-  arma_order = c(0,0),
-  distribution = "norm"
-  ) {
-  # Handling inputs
+# Function to fit GARCH(1,1) for one return series on an expanding window (monthly estimation)
+fit_garch_expanding_monthly <- function(
+  ret,
+  dates = NULL,
+  init_window = 504,          # ~2 trading years
+  garch_order = c(1, 1),
+  arma_order = c(0, 0),
+  distribution = "norm",
+  scale_ret = TRUE
+) {
+  # Basic input handling
   ret <- as.numeric(ret)
   dates <- as.Date(dates)
 
+  if (length(ret) != length(dates)) {
+    stop("ret and dates must have the same length.")
+  }
+
+  if (any(is.na(dates))) {
+    stop("dates contains NA values.")
+  }
+
+  if (scale_ret) {
+    ret <- 100 * ret
+  }
+
   n <- length(ret)
+
   if (n <= init_window) {
     stop("Series shorter than initial window.")
   }
 
-  # Specifying GARCH model
+  # GARCH specification
   spec <- ugarchspec(
     variance.model = list(
-      model = "sGARCH", garchOrder = garch_order
-    ), mean.model = list(
+      model = "sGARCH",
+      garchOrder = garch_order
+    ),
+    mean.model = list(
       armaOrder = arma_order,
       include.mean = TRUE
-    ), 
+    ),
     distribution.model = distribution
   )
 
-  # Storing results
-  results <- vector("list", n - init_window)
+  # Safe wrappers
+  # Added because of initial convergence issues
+  safe_fit <- function(x) {
+    tryCatch(
+      suppressWarnings(
+        ugarchfit(
+          spec = spec,
+          data = x,
+          solver = "hybrid",
+          solver.control = list(trace = 0)
+        )
+      ),
+      error = function(e) NULL
+    )
+  }
 
-  # Expanding estimation
-  for (t in (init_window):(n - 1)){
-    # The set of insample returns
-    insample_ret <- ret[1:t]
+  safe_forecast <- function(fit, n_ahead) {
+    tryCatch(
+      ugarchforecast(fit, n.ahead = n_ahead),
+      error = function(e) NULL
+    )
+  }
 
-    # Fitting GARCH based on insample data
-    fit <- ugarchfit(spec = spec, data = insample_ret, solver = "Hybrid")
+  # Find monthly refit dates
+  # Use last available trading day of each month
+  # After init_window
+  idx_all <- seq_len(n)
+  month_id <- format(dates, "%Y-%m")
 
-    # To catch errora
-    if (is.null(fit)) {
-      results[[t - init_window + 1]] <- data.frame(
-        date = dates[t + 1],
-        mu = NA_real_,
-        sigma = NA_real_,
-        sigma2 = NA_real_,
-        resid = NA_real_,
-        z = NA_real_,
-        stringsAsFactors = FALSE
-      )
+  # last observation index in each month
+  month_end_idx <- tapply(idx_all, month_id, max)
+  month_end_idx <- as.integer(month_end_idx)
+
+  # only refit when we have enough history
+  # and only if there is at least one next-day forecast to make
+  refit_idx <- month_end_idx[month_end_idx >= init_window & month_end_idx < n]
+
+  if (length(refit_idx) == 0) {
+    stop("No eligible monthly refit dates found after init_window.")
+  }
+
+  # Prepare output container
+  # Forecasts are for dates (init_window + 1):n
+  out_list <- vector("list", n - init_window)
+  out_pos <- 1
+
+  # Loop over monthly refit dates
+  for (k in seq_along(refit_idx)) {
+    t_refit <- refit_idx[k]
+
+    insample_ret <- ret[1:t_refit]
+
+    # Determine how many future days this fit should cover
+    next_refit <- if (k < length(refit_idx)) refit_idx[k + 1] else n
+
+    # Forecast for days (t_refit + 1) up to next_refit
+    forecast_idx <- (t_refit + 1):next_refit
+
+    if (length(forecast_idx) == 0) next
+
+    # Skip degenerate window
+    if (sd(insample_ret, na.rm = TRUE) <= 1e-8) {
+      for (j in forecast_idx) {
+        out_list[[out_pos]] <- data.frame(
+          date = dates[j],
+          mu = NA_real_,
+          sigma = NA_real_,
+          sigma2 = NA_real_,
+          resid = NA_real_,
+          z = NA_real_,
+          refit_date = dates[t_refit]
+        )
+        out_pos <- out_pos + 1
+      }
       next
+    }
+
+    fit <- safe_fit(insample_ret)
+
+    if (is.null(fit)) {
+      for (j in forecast_idx) {
+        out_list[[out_pos]] <- data.frame(
+          date = dates[j],
+          mu = NA_real_,
+          sigma = NA_real_,
+          sigma2 = NA_real_,
+          resid = NA_real_,
+          z = NA_real_,
+          refit_date = dates[t_refit]
+        )
+        out_pos <- out_pos + 1
+      }
+      next
+    }
+
+    fc <- safe_forecast(fit, n_ahead = length(forecast_idx))
+
+    if (is.null(fc)) {
+      for (j in forecast_idx) {
+        out_list[[out_pos]] <- data.frame(
+          date = dates[j],
+          mu = NA_real_,
+          sigma = NA_real_,
+          sigma2 = NA_real_,
+          resid = NA_real_,
+          z = NA_real_,
+          refit_date = dates[t_refit]
+        )
+        out_pos <- out_pos + 1
+      }
+      next
+    }
+
+    mu_fc <- as.numeric(fitted(fc))
+    sigma_fc <- as.numeric(sigma(fc))
+
+    for (h in seq_along(forecast_idx)) {
+      j <- forecast_idx[h]
+      r_next <- ret[j]
+      mu_h <- mu_fc[h]
+      sigma_h <- sigma_fc[h]
+      sigma2_h <- sigma_h^2
+
+      z_next <- if (is.na(sigma_h) || sigma_h <= 0) {
+        NA_real_
+      } else {
+        (r_next - mu_h) / sigma_h
+      }
+
+      out_list[[out_pos]] <- data.frame(
+        date = dates[j],
+        mu = mu_h,
+        sigma = sigma_h,
+        sigma2 = sigma2_h,
+        resid = r_next - mu_h,
+        z = z_next,
+        refit_date = dates[t_refit]
+      )
+      out_pos <- out_pos + 1
     }
   }
 
-  # 1-step ahead forecast
-  fc <- ugarchforecast(fit, n.ahead = 1)
-  mu_fc <- as.numeric(fitted(fc))
-  sigma_fc <- as.numeric(sigma(fc))
-  sigma2_fc <- sigma_fc^2
+  out <- do.call(rbind, out_list)
 
-  # Realised next return
-  r_next <- ret[t + 1]
-
-  # standardized residual (for DCC later)
-    z_next <- (r_next - mu_fc) / sigma_fc
-
-    results[[t - init_window + 1]] <- data.frame(
-      date = dates[t + 1],
-      mu = mu_fc,
-      sigma = sigma_fc,
-      sigma2 = sigma2_fc,
-      resid = r_next - mu_fc,
-      z = z_next,
-      stringsAsFactors = FALSE
-    )
-
-  out <- do.call(rbind, results)
-
-  return(out)
+  # sort and return
+  out <- out[order(out$date), ]
+  rownames(out) <- NULL
+  out
 }
 
-# Applying to all 56 return series
-run_all_garch_daily <- function(data, date_col = "Date", init_window = 504){
+run_all_garch_monthly <- function(data, date_col = "date", init_window = 504) {
   dates <- data[[date_col]]
   ret_names <- setdiff(names(data), date_col)
 
-   out <- lapply(ret_names, function(nm) {
-    fit_garch_expanding_daily(
+  out <- lapply(ret_names, function(nm) {
+    fit_garch_expanding_monthly(
       ret = data[[nm]],
       dates = dates,
       init_window = init_window
@@ -213,7 +325,29 @@ run_all_garch_daily <- function(data, date_col = "Date", init_window = 504){
   out
 }
 
-garch_results <- run_all_garch_daily(managed_portfolios)
+# Too long to run what is below, so will run test case first
+# garch_results <- run_all_garch_daily(managed_portfolios)
+
+system.time({
+  test_result <- fit_garch_expanding_monthly(
+    ret = managed_portfolios[[2]][1:1100],
+    dates = managed_portfolios$date[1:1100],
+    init_window = 504
+  )
+})
+
+system.time({
+  garch_results_test <- run_all_garch_monthly(
+    managed_portfolios[1:1100, ],
+    date_col = "date",
+    init_window = 504
+  )
+})
+
+# Checking if there are any nas  and if no of forecasts is 596
+sapply(garch_results_test, function(x) sum(is.na(x$sigma)))
+sapply(garch_results_test, nrow)
+
 # =================================================
 # Benchmarks
 # =================================================
