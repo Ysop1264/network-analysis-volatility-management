@@ -12,3 +12,5 @@ But yeah, worst case, just use Chat to get the steps to configure the things on 
 
 24/03/2026 - Yadhu (12:30): Added library lubridate and created dataframe trading_days to keep track of the number of trading days per month per year
 Yadhu (13:40): Removed trading days, cause not needed to calculate RV. Added rv_monthly calculation
+
+24/03/2026 - Kornel (13:00): Added the beggining of Benchmark section with defining estimation sample. SR and Optimal MVE wieghts functions added.
