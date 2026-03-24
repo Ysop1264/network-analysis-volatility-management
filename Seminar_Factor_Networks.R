@@ -8,6 +8,8 @@
 # install.packages("sandwich")
 # install.packages("lmtest")
 # install.packages("lubridate")
+# install.packages("nlshrink")
+
 #####
 
 library(tidyverse)
@@ -19,6 +21,7 @@ library(moments)
 library(sandwich)
 library(lmtest)
 library(lubridate)
+library(nlshrink)
 
 # DATA download and transformation
 start_date <- as.Date("1971-01-01")
