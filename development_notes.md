@@ -14,3 +14,4 @@ But yeah, worst case, just use Chat to get the steps to configure the things on 
 Yadhu (13:40): Removed trading days, cause not needed to calculate RV. Added rv_monthly calculation
 
 24/03/2026 - Kornel (13:00): Added the beggining of Benchmark section with defining estimation sample. SR and Optimal MVE wieghts functions added.
+Kornel (17:30): Chenged the section of Benchmarks for 'Functions' with function definitions. Added benchmarks section, where both the MVE strategy as well as equally weighted buy-and-hold are implemented. Still need to verify the code and make sure of few Moreira and Muir approaches, but largerly it should be it.

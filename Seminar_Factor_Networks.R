@@ -66,14 +66,10 @@ managed_portfolios <- factors_joined_excess |> select(-risk_free)
 print(head(managed_portfolios))
 
 
-# =================================================
-# Benchmarks
-# =================================================
 
-# Defining the estimation sample
-start_date_estimation <- as.Date("1971-01-01")
-end_date_estimation <- as.Date("1973-01-01")
-
+# =================================================
+# Functions
+# =================================================
 
 #' Compute the MVE static weights
 #' 
@@ -113,3 +109,106 @@ rv_monthly <- managed_portfolios %>%
 
 print(head(rv_monthly))
 print(tail(rv_monthly))
+
+
+
+
+
+# =================================================
+# Benchmarks
+# =================================================
+
+# Setting here to test the script for less managed portfolios
+managed_portfolios <- managed_portfolios[,1:7]
+
+# Defining the estimation sample
+start_date_estimation <- as.Date("1971-01-01")
+end_date_estimation <- as.Date("1973-01-01")
+
+
+### MVE Benchmark by Moreira and Muir (2017)
+
+# Calculating in-sample mean
+managed_portfolios_est <- managed_portfolios |> 
+  filter(date >= start_date_estimation & date <= end_date_estimation)
+mu <- as.matrix(colMeans(managed_portfolios_est[,-1]))
+colnames(mu) <- c("mean")
+
+# Calculating the in-sample covariance matrix with Shrinkage estimator (Ledoit and Wolf (2004))
+sigma <- as.matrix(linshrink_cov(as.matrix(managed_portfolios_est[,-1])))
+
+# Calculating the optimal weights 
+b <- compute_MVE_weights(mu, sigma)
+
+# Resulting in-sample maximized sharpe ratio 
+sp_in_sample <- t(b)%*%mu
+print(paste("In-sample Sharpe Ratio:",  round(sp_in_sample,4)))
+
+
+# The resulting weighted factor before volatility management 
+MVE_returns <- as.matrix(managed_portfolios[,-1]) %*% b
+MVE_returns_df <- tibble(
+  date = managed_portfolios$date,
+  month = floor_date(date, "month"),
+  MVE_return = as.numeric(MVE_returns)
+  
+)
+
+# Computing the realized variance
+rv_lag_MVE <- MVE_returns_df |>
+  group_by(month) |>
+  summarise(
+    n_of_days = n(),
+    rv = sum((MVE_return-mean(MVE_return))^2) / n_of_days,
+    .groups = "drop"
+  ) |> mutate(
+    rv_lag = lag(rv)
+  ) |> select(-rv)
+
+# Scaling the portfolio by its lagged realized variance (REPAIR THAT BC I NEED TO SCALE BY LAG!!!)
+MVE_returns_df <- MVE_returns_df |> left_join(rv_lag_MVE, by = "month")
+MVE_returns_df <- MVE_returns_df |> 
+  mutate(
+    MVE_scaled = MVE_return / rv_lag
+  )
+MVE_returns_df <- MVE_returns_df |> select(-c("rv_lag", "n_of_days"))
+
+# Take out the first month, because we do not have the realized variance for the period 0
+MVE_returns_df <- MVE_returns_df |> filter(month >= start_date_estimation + months(1))
+
+# Scaling by c
+c = sd(MVE_returns_df$MVE_return)/sd(MVE_returns_df$MVE_scaled)
+MVE_returns_df$MVE_strategy_return <- MVE_returns_df$MVE_scaled*c
+MVE_returns_df <- MVE_returns_df |> select(-c(MVE_return, MVE_scaled))
+
+
+### Equally weighted buy-and-hold 
+no_of_factors <- dim(managed_portfolios[,-1])[2]
+b_EW <- as.matrix(rep(1/no_of_factors, no_of_factors))
+
+EW_returns <- as.matrix(managed_portfolios[,-1]) %*% b_EW
+EW_returns_df <- tibble(
+  date = managed_portfolios$date, 
+  month = floor_date(date, "month"),
+  EW_return = as.numeric(EW_returns)
+) |> filter(month >= start_date_estimation + months(1))
+
+
+# Changing data frames only for out of sample periods
+MVE_returns_df <- MVE_returns_df |> filter(month > end_date_estimation)
+EW_returns_df <- EW_returns_df |> filter(month > end_date_estimation)
+
+
+
+## This is just for veryfying the performance of the benchmarks
+
+# Calculating the Sharpe Ratios
+sharpe_ratios_benchmarks <- data_frame(
+  Benchmark = c("EW Buy-and-Hold", "MVE"),
+  SR = c(round(compute_SR(EW_returns_df$EW_return),4)*sqrt(252), 
+         round(compute_SR(MVE_returns_df$MVE_strategy_return),4)*sqrt(252))
+)
+
+
+# Creating data frame for letter regressions
+benchmarks_returns <- EW_returns_df |> left_join(MVE_returns_df, by = "date") |> select(-c(month.x, month.y))
