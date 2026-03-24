@@ -442,6 +442,405 @@ print(summary(apply(Z_block, 2, sd, na.rm = TRUE)))
 print(max(abs(Z_block), na.rm = TRUE))
 print(quantile(abs(Z_block), probs = c(0.90, 0.95, 0.99, 0.999), na.rm = TRUE))
 
+# Keeping track of current month and the forecasting month
+make_month_index <- function(dates, min_obs = 252) {
+  dates <- as.Date(dates)
+  n <- length(dates)
+
+  if (n == 0) stop("dates is empty.")
+
+  month_id <- format(dates, "%Y-%m")
+
+  # End-of-month row index for each observed month
+  month_end_idx <- tapply(seq_len(n), month_id, max)
+  month_end_idx <- as.integer(month_end_idx)
+
+  # Creating a list of monthly forecasting blocks:
+  # for each month-end t, forecasts the rows belonging to next month
+  out <- vector("list", length(month_end_idx) - 1)
+  out_pos <- 1
+
+  for (k in seq_len(length(month_end_idx) - 1)) {
+    t_end <- month_end_idx[k]
+    next_end <- month_end_idx[k + 1]
+
+    insample_idx <- seq_len(t_end)
+    forecast_idx <- (t_end + 1):next_end
+
+    if (length(insample_idx) < min_obs) next
+    if (length(forecast_idx) == 0) next
+
+    out[[out_pos]] <- list(
+      refit_month = names(month_end_idx)[k],
+      refit_idx = t_end,
+      refit_date = dates[t_end],
+      insample_idx = insample_idx,
+      forecast_idx = forecast_idx,
+      forecast_dates = dates[forecast_idx]
+    )
+    out_pos <- out_pos + 1
+  }
+
+  out <- out[seq_len(out_pos - 1)]
+  out
+}
+
+# Function to convert covariance matrix to correlation
+cov_to_cor <- function(Sigma, eps = 1e-10) {
+  d <- sqrt(pmax(diag(Sigma), eps))
+  Dinv <- diag(1 / d, nrow = length(d))
+  Dinv %*% Sigma %*% Dinv
+}
+
+# Forcing matrix to be positive semi-definite
+# Done to allow inversion, valid likelihood and prevent DCC explosion
+# Basically trying to find the closeest valid covariance matrix
+make_psd <- function(M, eps = 1e-8) {
+  M <- (M + t(M)) / 2
+  
+  # Eigenvector decomposition
+  ee <- eigen(M, symmetric = TRUE)
+
+  # Pushing any negative eigenvalues to small positive number
+  vals <- pmax(ee$values, eps)
+  out <- ee$vectors %*% diag(vals, nrow = length(vals)) %*% t(ee$vectors)
+  out <- (out + t(out)) / 2
+  out
+}
+
+# Constructs robust correlation target matrix S
+safe_cor <- function(Z) {
+  S <- suppressWarnings(cor(Z, use = "pairwise.complete.obs"))
+  S[!is.finite(S)] <- 0
+  diag(S) <- 1
+  S <- make_psd(S)
+  S <- cov_to_cor(S)
+  S
+}
+
+# Converts DCC matrix Q_t to correlation matrix R_t
+normalize_Q_to_R <- function(Q, eps = 1e-10) {
+  qd <- sqrt(pmax(diag(Q), eps))
+  Dinv <- diag(1 / qd, nrow = length(qd))
+  R <- Dinv %*% Q %*% Dinv
+  R <- (R + t(R)) / 2
+  diag(R) <- 1
+  R
+}
+
+# Function to run the DCC recursion over the time series
+dcc_filter <- function(Z, a, b, S) {
+  Z <- as.matrix(Z)
+  Tn <- nrow(Z) # number of time obs
+  N <- ncol(Z) # number of factors and managed portfolios
+
+  # Store the entire time series of intermediate matrix and correlation matrix
+  Q_list <- vector("list", Tn)
+  R_list <- vector("list", Tn)
+
+  # Initialising recursion at the long run target
+  Q_prev <- S
+
+  for (t in seq_len(Tn)) {
+    # for DCC recursion at time t, use lagged standardised residual t-1 (at first, just use 0)
+    zlag <- if (t == 1) rep(0, N) else Z[t - 1, ]
+    zlag[!is.finite(zlag)] <- 0
+
+    # DCC Recursion (tcrossprod is tranpose product)
+    Q_t <- (1 - a - b) * S + a * tcrossprod(zlag) + b * Q_prev
+    # Enforce symmetry 
+    Q_t <- (Q_t + t(Q_t)) / 2
+    R_t <- normalize_Q_to_R(Q_t)
+
+    Q_list[[t]] <- Q_t
+    R_list[[t]] <- R_t
+    Q_prev <- Q_t
+  }
+
+  list(Q = Q_list, R = R_list, Q_T = Q_prev)
+}
+
+# Computing negative loglikelihood of the DCC model given (a,b)
+dcc_negloglik <- function(par, Z, S, penalty = 1e12) {
+  # Parameter vector
+  a <- par[1]
+  b <- par[2]
+
+  # DCC constraints
+  if (!is.finite(a) || !is.finite(b) || a < 0 || b < 0 || (a + b) >= 0.999) {
+    return(penalty)
+  }
+
+  # Just some matrix formatting, more for clarity
+  Z <- as.matrix(Z)
+  Tn <- nrow(Z)
+  N <- ncol(Z)
+
+  # Given (a,b), first run the entire DCC filter to construct all correlation matrices
+  filt <- dcc_filter(Z, a = a, b = b, S = S)
+  nll <- 0
+
+
+  for (t in seq_len(Tn)) {
+    zt <- Z[t, ]
+    if (any(!is.finite(zt))) next
+
+    # getting model implied R_t, and then make it positive semidefinite
+    Rt <- filt$R[[t]]
+    Rt <- make_psd(Rt)
+
+    detR <- determinant(Rt, logarithm = TRUE)
+    if (!is.finite(detR$modulus)) return(penalty)
+
+    invR <- tryCatch(solve(Rt), error = function(e) NULL)
+    if (is.null(invR)) return(penalty)
+
+    quad <- drop(t(zt) %*% invR %*% zt)
+    if (!is.finite(quad)) return(penalty)
+
+    nll <- nll + as.numeric(detR$modulus) + quad
+  }
+
+  # One-half factor as in classic Gaussian Likelihood
+  0.5 * nll
+}
+
+# Function to estimate DCC parameters (a,b) from in-sample standardised residuals
+estimate_dcc <- function(Z_insample, S_target = NULL, 
+start_par = c(0.03, 0.95)) { # Need to justify starting values
+  Z_insample <- as.matrix(Z_insample)
+
+  # Drop rows with any missing values for DCC estimation
+  keep <- complete.cases(Z_insample)
+  Z_use <- Z_insample[keep, , drop = FALSE]
+
+  if (nrow(Z_use) < 50) {
+    stop("Too few complete observations to estimate DCC.")
+  }
+
+  # Choosing long-run target S
+  if (is.null(S_target)) {
+    S_target <- safe_cor(Z_use)
+  } else {
+    S_target <- make_psd(S_target)
+    S_target <- cov_to_cor(S_target)
+  }
+
+  # Optimisation function to minimise log likelihood
+  # We use L-BFGS to minmise computation, and its also better for few parameters
+  opt <- optim(
+    par = start_par,
+    fn = dcc_negloglik,
+    Z = Z_use,
+    S = S_target,
+    method = "L-BFGS-B",
+    lower = c(1e-6, 1e-6),
+    upper = c(0.5, 0.999)
+  )
+
+  # Estimated Parameters
+  a_hat <- opt$par[1]
+  b_hat <- opt$par[2]
+
+  # Enforce stationarity softly if optimiser lands near the boundary
+  if ((a_hat + b_hat) >= 0.999) {
+    s <- a_hat + b_hat
+    a_hat <- a_hat * 0.999 / s
+    b_hat <- b_hat * 0.999 / s
+  }
+
+  # Gives in-sample state Q_t, which we need to forecast on
+  filt <- dcc_filter(Z_use, a = a_hat, b = b_hat, S = S_target)
+
+  list(
+    a = a_hat,
+    b = b_hat,
+    S = S_target,
+    Q_T = filt$Q_T,
+    opt = opt,
+    n_obs = nrow(Z_use)
+  )
+}
+
+# Function that uses DCC estimation to forecast multiple steps ahead correlations
+forecast_dcc_correlations <- function(Q_T, S, a, b, h) {
+  phi <- a + b # Persistence term
+  out <- vector("list", h)
+
+  Q_prev <- Q_T
+  # forecasting from the last in-sample state and move forward day by day
+  for (k in seq_len(h)) {
+    # Expected future DCC recursion
+    Q_fc <- S + phi * (Q_prev - S)
+    Q_fc <- (Q_fc + t(Q_fc)) / 2
+    R_fc <- normalize_Q_to_R(Q_fc)
+
+    out[[k]] <- list(Q = Q_fc, R = R_fc)
+    Q_prev <- Q_fc
+  }
+
+  out
+}
+
+# Rebuilding conditional covariance matrices using future volatility
+# forecasts from univariate GARCH and future correlation forecasts from DCC
+build_cov_from_sigma_and_R <- function(SIGMA_future, R_list, dates_future = NULL) {
+  SIGMA_future <- as.matrix(SIGMA_future) # Matrix of daily forecats over the future month
+  h <- nrow(SIGMA_future)
+  N <- ncol(SIGMA_future)
+
+  if (length(R_list) != h) {
+    stop("length(R_list) must equal nrow(SIGMA_future).")
+  }
+
+  H_list <- vector("list", h)
+
+  for (t in seq_len(h)) {
+    sig_t <- SIGMA_future[t, ]
+    if (any(!is.finite(sig_t)) || any(sig_t <= 0)) {
+      H_list[[t]] <- matrix(NA_real_, N, N)
+      next
+    }
+
+    # Main covariance reconstruction formula
+    D_t <- diag(sig_t, nrow = N)
+    R_t <- R_list[[t]]$R
+    H_t <- D_t %*% R_t %*% D_t
+    H_t <- (H_t + t(H_t)) / 2
+    H_list[[t]] <- H_t
+  }
+
+  if (!is.null(dates_future)) {
+    names(H_list) <- as.character(as.Date(dates_future))
+  }
+
+  # Returns a list of daily covariance forecast matrices
+  H_list
+}
+
+# Convert daily covariance forecasts to monthly
+aggregate_monthly_cov <- function(H_list) {
+  valid <- Filter(function(x) all(is.finite(x)), H_list)
+  if (length(valid) == 0) return(NULL)
+
+  Reduce(`+`, valid)
+}
+
+# Master function
+# loops over month-end refit dates and does the full monthly DCC forecasting exercise
+# estimate DCC on expanding in-sample data
+# forecast next-month daily correlations
+# combine with next-month daily volatility forecasts
+# aggregate into monthly covariance forecasts
+run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
+                            min_corr_window = 252, S_builder = NULL,
+                            trace = TRUE) {
+  Z_block <- as.matrix(Z_block)
+  SIGMA_block <- as.matrix(SIGMA_block)
+  dates_block <- as.Date(dates_block)
+
+  if (!identical(dim(Z_block), dim(SIGMA_block))) {
+    stop("Z_block and SIGMA_block must have identical dimensions.")
+  }
+
+  if (nrow(Z_block) != length(dates_block)) {
+    stop("dates_block length must equal nrow(Z_block).")
+  }
+
+  # monthly expanding-window forecasting schedule
+  month_map <- make_month_index(dates_block, min_obs = min_corr_window)
+
+  if (length(month_map) == 0) {
+    stop("No eligible monthly DCC forecasting blocks found.")
+  }
+
+  out <- vector("list", length(month_map))
+
+  for (i in seq_along(month_map)) {
+    blk <- month_map[[i]]
+    
+    # Diagnostic measure since DCC fitting can take time
+    if (trace) {
+      message(
+        "Estimating DCC for refit date ",
+        as.character(blk$refit_date),
+        " | insample n = ",
+        length(blk$insample_idx),
+        " | forecast h = ",
+        length(blk$forecast_idx)
+      )
+    }
+
+    Z_insample <- Z_block[blk$insample_idx, , drop = FALSE] # DCC estimation sample
+    SIGMA_future <- SIGMA_block[blk$forecast_idx, , drop = FALSE] # next-month daily volatility
+
+    # Hook for nonlinear shrinkage later
+    # Long run target S
+    S_target <- if (is.null(S_builder)) {
+      safe_cor(Z_insample)
+    } else {
+      S_builder(Z_insample)
+    }
+
+    # Estimate DCC model on in-sample block, if it fails just retunr  null instead
+    # of crashing everything
+    dcc_fit <- tryCatch(
+      estimate_dcc(Z_insample, S_target = S_target),
+      error = function(e) NULL
+    )
+
+    if (is.null(dcc_fit)) {
+      out[[i]] <- list(
+        refit_date = blk$refit_date,
+        forecast_dates = blk$forecast_dates,
+        a = NA_real_,
+        b = NA_real_,
+        R_forecasts = NULL,
+        H_forecasts = NULL,
+        H_month = NULL
+      )
+      next
+    }
+
+    # forecast the full sequence of next-month daily conditional correlations
+    dcc_fc <- forecast_dcc_correlations(
+      Q_T = dcc_fit$Q_T,
+      S = dcc_fit$S,
+      a = dcc_fit$a,
+      b = dcc_fit$b,
+      h = length(blk$forecast_idx)
+    )
+
+    H_fc <- build_cov_from_sigma_and_R(
+      SIGMA_future = SIGMA_future,
+      R_list = dcc_fc,
+      dates_future = blk$forecast_dates
+    )
+
+    # Main aggregated matrix used for precision matrix construction later
+    H_month <- aggregate_monthly_cov(H_fc)
+
+    # Stores everything from that monthly estimation/forecast cycle
+    out[[i]] <- list(
+      refit_month = blk$refit_month,
+      refit_date = blk$refit_date,
+      insample_idx = blk$insample_idx,
+      forecast_idx = blk$forecast_idx,
+      forecast_dates = blk$forecast_dates,
+      a = dcc_fit$a,
+      b = dcc_fit$b,
+      S = dcc_fit$S,
+      Q_T = dcc_fit$Q_T,
+      R_forecasts = lapply(dcc_fc, `[[`, "R"),
+      H_forecasts = H_fc,
+      H_month = H_month,
+      opt = dcc_fit$opt
+    )
+  }
+
+  names(out) <- sapply(out, function(x) as.character(x$refit_date))
+  out
+}
 # =================================================
 # Benchmarks
 # =================================================
