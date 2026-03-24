@@ -63,6 +63,8 @@ factors_joined_excess <- factors_joined |>
 
 managed_portfolios <- factors_joined_excess |> select(-risk_free)
 
+print(head(managed_portfolios))
+
 
 # =================================================
 # Benchmarks
@@ -94,13 +96,20 @@ compute_SR <- function(r){
   return(SR)
 }
 
-# Number of trading days per month and year
-trading_days <- managed_portfolios %>%
-  mutate(
-    year = year(date),
-    month = month(date),
+# Constructed Realised Variance
+rv_monthly <- managed_portfolios %>%
+  mutate(month = floor_date(date, "month")) %>%
+  pivot_longer(
+    cols = -c(date, month),
+    names_to = "factor",
+    values_to = "ret"
   ) %>%
-  group_by(year, month) %>%
-  summarise(count_day = n(), .groups = "drop")
+  group_by(factor, month) %>%
+  summarise(
+    RV = sum((ret - mean(ret, na.rm = TRUE))^2, na.rm = TRUE),
+    sigma = sqrt(RV),
+    .groups = "drop"
+  )
 
-print(head(trading_days))
+print(head(rv_monthly))
+print(tail(rv_monthly))
