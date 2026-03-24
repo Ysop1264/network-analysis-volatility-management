@@ -7,6 +7,7 @@
 # install.packages("moments")
 # install.packages("sandwich")
 # install.packages("lmtest")
+# install.packages("lubridate")
 #####
 
 library(tidyverse)
@@ -17,6 +18,7 @@ library(dplyr)
 library(moments)
 library(sandwich)
 library(lmtest)
+library(lubridate)
 
 # DATA download and transformation
 start_date <- as.Date("1971-01-01")
@@ -61,7 +63,6 @@ factors_joined_excess <- factors_joined |>
 
 managed_portfolios <- factors_joined_excess |> select(-risk_free)
 
-print(managed_portfolios$date.count())
 
 # =================================================
 # Benchmarks
@@ -92,3 +93,14 @@ compute_SR <- function(r){
   SR = mean(r)/sd(r)
   return(SR)
 }
+
+# Number of trading days per month and year
+trading_days <- managed_portfolios %>%
+  mutate(
+    year = year(date),
+    month = month(date),
+  ) %>%
+  group_by(year, month) %>%
+  summarise(count_day = n(), .groups = "drop")
+
+print(head(trading_days))
