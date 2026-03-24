@@ -20,4 +20,6 @@ Kornel (17:30): Chenged the section of Benchmarks for 'Functions' with function 
 
 24/03/2026 - Zhang (19:24): Just downloaded everything and cloned. Failed to download miktek tho so maybe wont be able to code overleaf here but i can do it on overleaf itself. 
 
-24/03/2026 - Yadhu (20:39): Changed the function for the return series to monthly restimation, and added the function to estimate GARCH across all factors. Ran a smaller case for the first 1100 observations (so 596 forecasts) to check if speed is reasonable and it took 5 minutes. For the actual runtime, we should be looking upwards of an hour, but the code does run. Too tired to write the full explanation of the function right now. Will do it in my next update
+24/03/2026 - Yadhu (20:39): Changed the function for the return series to monthly restimation, and added the function to estimate GARCH across all factors. Ran a smaller case for the first 1100 observations (so 596 forecasts) to check if speed is reasonable and it took 5 minutes. For the actual runtime, we should be looking upwards of an hour, but the code does run. Too tired to write the full explanation of the function right now. Will do it in my next update (or not)
+
+24/03/2026 -Yadhu (21:27): Added a function to construct matrices of standardised residual, diagonal matrices and ran check for the matrices and the mean and standard deviation measures. All checks have passed so far (do note for a pretty limited set, but should be working as normal later, will just take longer)
