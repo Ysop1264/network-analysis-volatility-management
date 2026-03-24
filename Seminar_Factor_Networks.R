@@ -10,8 +10,6 @@
 # install.packages("lubridate")
 # install.packages("nlshrink")
 # install.packages("rugarch")
-# install.packages("xts")
-# install.packages("zoo")
 #####
 
 library(tidyverse)
@@ -25,8 +23,6 @@ library(lmtest)
 library(lubridate)
 library(nlshrink)
 library(rugarch)
-library(xts)
-library(zoo)
 
 # DATA download and transformation
 start_date <- as.Date("1971-01-01")
@@ -119,7 +115,7 @@ print(tail(rv_monthly))
 # DCC-NL Estimation for Covariance Matrix
 # Fitting univariate GARCH(1,1) 
 # Function to fit GARCH(1,1) for one return series on an expanding window (daily estimation)
-fit_garch_expanding <- function(
+fit_garch_expanding_daily <- function(
   ret, dates = NULL, 
   init_window = 504, # 2 trading years approx
   refit_on = c("month_end", "every_day"),
@@ -200,8 +196,24 @@ fit_garch_expanding <- function(
   return(out)
 }
 
+# Applying to all 56 return series
+run_all_garch_daily <- function(data, date_col = "Date", init_window = 504){
+  dates <- data[[date_col]]
+  ret_names <- setdiff(names(data), date_col)
 
+   out <- lapply(ret_names, function(nm) {
+    fit_garch_expanding_daily(
+      ret = data[[nm]],
+      dates = dates,
+      init_window = init_window
+    )
+  })
 
+  names(out) <- ret_names
+  out
+}
+
+garch_results <- run_all_garch_daily(managed_portfolios)
 # =================================================
 # Benchmarks
 # =================================================
