@@ -518,6 +518,37 @@ safe_cor <- function(Z) {
   S
 }
 
+# Nonlinear-shrinkage long-run target for DCC
+# Input: in-sample standardized residuals Z_insample
+# Output: correlation target matrix S_target
+build_nlshrink_target <- function(Z_insample, eps = 1e-8) {
+  Z_insample <- as.matrix(Z_insample)
+
+  # DCC target must be built on complete rows only
+  Z_use <- Z_insample[complete.cases(Z_insample), , drop = FALSE]
+
+  if (nrow(Z_use) < 20) {
+    stop("Too few complete observations for nonlinear shrinkage.")
+  }
+
+  # Standardized residuals should already be centered approximately at zero,
+  # but demeaning helps the covariance estimator
+  Z_use <- scale(Z_use, center = TRUE, scale = FALSE)
+
+  # nonlinear shrinkage covariance estimate
+  Sigma_nl <- nlshrink::nlshrink_cov(Z_use)
+
+  # Safety cleanup
+  Sigma_nl <- make_psd(Sigma_nl, eps = eps)
+
+  # Convert shrunk covariance target into a correlation target for DCC
+  S_target <- cov_to_cor(Sigma_nl, eps = eps)
+  S_target <- make_psd(S_target, eps = eps)
+  S_target <- cov_to_cor(S_target, eps = eps)
+
+  S_target
+}
+
 # Converts DCC matrix Q_t to correlation matrix R_t
 normalize_Q_to_R <- function(Q, eps = 1e-10) {
   qd <- sqrt(pmax(diag(Q), eps))
