@@ -61,3 +61,4 @@ factors_joined_excess <- factors_joined |>
 
 managed_portfolios <- factors_joined_excess |> select(-risk_free)
 
+print(managed_portfolios$date.count())
