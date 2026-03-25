@@ -1,19 +1,19 @@
 ##### Uncomment if packages not installed
-# install.packages("tidyverse")
-# install.apckages("tidyfinance")
-# install.packages("scales")
-# install.packages("frenchdata")
-# install.packages("dplyr")
-# install.packages("moments")
-# install.packages("sandwich")
-# install.packages("lmtest")
-# install.packages("lubridate")
-# install.packages("nlshrink")
-# install.packages("rugarch")
-# install.packages("xts")
-# install.packages("zoo")
+install.packages("tidyverse")
+install.packages("tidyfinance")
+install.packages("scales")
+install.packages("frenchdata")
+install.packages("dplyr")
+install.packages("moments")
+install.packages("sandwich")
+install.packages("lmtest")
+install.packages("lubridate")
+install.packages("nlshrink")
+install.packages("rugarch")
+install.packages("xts")
+install.packages("zoo")
 #####
-
+library(rlang)
 library(tidyverse)
 library(tidyfinance)
 library(scales)
@@ -198,6 +198,81 @@ fit_garch_expanding <- function(
   out <- do.call(rbind, results)
 
   return(out)
+}
+
+# Adjacency matrix construction 
+# @param sigma_hat is the forecasted covariance matrix 
+# @param tau is the threshold (0.1,0.5)
+# @return List with partial correlations and the adjacency matrix
+adjacency_matrix <- function(sigma_hat, tau = 0.1) {
+  # start with precision matrix 
+  theta <- solve(sigma_hat)
+  N <- nrow(theta)
+  # vector approach to get the partial correlation matrix
+  # make a vector for the inverse of the square roots of the diagonal elements
+  d <- 1/sqrt(diag(theta))
+  
+  # partial correlation is -theta_ij / sqrt(theta_ii * theta_jj)
+  partial_corr <- -theta * (d %o% d)
+  # set diagonals to 0 to prevent them from being -1 with themselves
+  diag(partial_corr) <- 0
+
+  # now separate positive and negative adjacency matrix
+  # positive (contagion):
+  adjacency_pos <- ifelse(partial_corr > tau, partial_corr, 0)
+  # negative (potential for hedging):
+  adjacency_neg <- ifelse(partial_corr < -tau, -partial_corr, 0)
+  return(list(
+    partial_corr = partial_corr,
+    adjacency_pos = adjacency_pos,
+    adjacency_neg = adjacency_neg
+  ))
+}
+
+# Grid search for tau
+# define the grid 
+taus <- seq(0.1, 0.5, by = 0.1)
+# store the results for each tau 
+grid_tau <- list()
+for (i in taus) {
+  # execute the function for the current tau starting from 0.1
+  adjacency_output <- adjacency_matrix(sigma_hat, tau = i)
+  grid_tau[[as.character(i)]] <- adjacency_output
+  count_positive <- sum(adjacency_output$adjacency_pos > 0)
+  count_negative <- sum(adjacency_output$adjacency_neg > 0)
+
+  # check
+  cat(sprintf("Tau: %.1f | Pos Links: %d | Neg Links: %d\n", i, count_positive, count_negative))
+}
+
+# Network Centrality function using EC 
+# @param adjacency_pos for positive adjacency matrix
+# @param adjacency_neg for negative adjacency matrix 
+# @return List with EC+ and EC-
+network_centrality <- function(adjacency_pos, adjacency_neg){
+  # eigenvalue for positive (contagion) network:
+  eigenvalue_pos <- eigen(adjacency_pos)
+  # eigenvector corresponding to largest eigenvalue for positive (contagion):
+  eigenvector_pos <- Re(eigenvalue_pos$vectors[,1])
+  # ensure positive values 
+  if (sum(eigenvector_pos) < 0) eigenvector_pos <- -eigenvector_pos
+  # normalize them 
+  ec_pos <- eigenvector_pos / sum(eigenvector_pos)
+  
+  # eigenvalue for negative (potential for hedging) network:
+  eigenvalue_neg <- eigen(adjacency_neg)
+  # eigenvector corresponding to largest eigenvalue for negative (hedging):
+  eigenvector_neg <- Re(eigenvalue_neg$vectors[,1])
+  # ensure positive values 
+  if (sum(eigenvector_neg) < 0) eigenvector_neg <- -eigenvector_neg
+  # normalize them
+  ec_neg <- eigenvector_neg / sum(eigenvector_neg)
+
+  #return list 
+  return(list(
+    ec_pos = ec_pos,
+    ec_neg = ec_neg
+  ))
 }
 
 
