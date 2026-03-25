@@ -1080,6 +1080,51 @@ spillovers <- function(adjacency_pos, adjacency_neg, ec_pos, ec_neg, sigma_vec) 
   ))
 }
 
+# Penalty function g_i(S_i,m) = max(eps, 1 + lambda_pos*S_pos - lambda_neg*S_neg)
+network_penalty <- function(spillover_pos, spillover_neg,
+                            lambda_pos = 0.1, lambda_neg = 0.1,
+                            eps = 1e-4) {
+  g <- 1 + lambda_pos * spillover_pos - lambda_neg * spillover_neg
+  pmax(eps, g)
+}
+
+# Raw network-adjusted weights: \tilde w_i,m = 1 / (sigma_i,m * g_i)
+network_adjusted_weights <- function(sigma_vec, spillover_pos, spillover_neg,
+                                     lambda_pos = 0.1, lambda_neg = 0.1,
+                                     eps = 1e-4) {
+  sigma_vec <- as.numeric(sigma_vec)
+
+  g <- network_penalty(
+    spillover_pos = spillover_pos,
+    spillover_neg = spillover_neg,
+    lambda_pos = lambda_pos,
+    lambda_neg = lambda_neg,
+    eps = eps
+  )
+
+  w_tilde <- 1 / (sigma_vec * g)
+
+  list(
+    penalty = g,
+    w_tilde = w_tilde
+  )
+}
+
+# Unscaled portfolio return: \tilde f^{NET}_{p,m+1} = sum_i \tilde w_i,m * f_i,m+1
+network_portfolio_return <- function(w_tilde, returns_next_month) {
+  sum(w_tilde * as.numeric(returns_next_month), na.rm = TRUE)
+}
+
+# Scaling constant c so that sd(c * f_net_unscaled) = sd(f_benchmark)
+scaling_constant <- function(f_net_unscaled, f_benchmark) {
+  sd(f_benchmark, na.rm = TRUE) / sd(f_net_unscaled, na.rm = TRUE)
+}
+
+# Final scaled network-managed return
+scaled_network_return <- function(f_net_unscaled, c) {
+  c * f_net_unscaled
+}
+
 # =================================================
 # Benchmarks
 # =================================================
