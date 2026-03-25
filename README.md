@@ -45,128 +45,132 @@ For manipulation:
 
 ### DCC-NL Covariance Estimation
 Important
-managed_portfolios – data frame containing daily returns of all factors and managed portfolios
-dates_block – vector of trading dates aligned across all series
-init_window – initial estimation window for univariate GARCH estimation, typically 504 trading days
-min_corr_window – minimum number of in-sample observations required for DCC estimation
-Z_block – matrix of standardised residuals from the univariate GARCH models
-SIGMA_block – matrix of conditional volatility forecasts from the univariate GARCH models
-MU_block – matrix of conditional mean forecasts from the univariate GARCH models
-RESID_block – matrix of residuals, defined as returns minus conditional mean forecasts
-Univariate GARCH Estimation
-fit_garch_expanding_monthly() – fits a univariate GARCH(1,1) model to one return series using an expanding window with monthly refits
-run_all_garch_monthly() – applies the monthly expanding-window GARCH estimation to all return series
-mu – one-step-ahead conditional mean forecast from the univariate GARCH model
-sigma – one-step-ahead conditional volatility forecast from the univariate GARCH model
-sigma2 – one-step-ahead conditional variance forecast, equal to sigma^2
-resid – forecast error, defined as return minus conditional mean
-z – standardised residual, defined as resid / sigma
-refit_date – date on which the GARCH model is re-estimated
-GARCH Block Construction
-build_garch_blocks() – combines the list of univariate GARCH outputs into aligned matrices
-Z_block – T x N matrix of standardised residuals
-SIGMA_block – T x N matrix of conditional volatilities
-MU_block – T x N matrix of conditional means
-RESID_block – T x N matrix of residuals
-Monthly Forecasting Index
-make_month_index() – constructs the sequence of expanding in-sample windows and next-month forecast blocks
-refit_month – year-month identifier of the estimation month
-refit_idx – row index of the month-end estimation date
-refit_date – final trading day of the estimation month
-insample_idx – row indices used for in-sample DCC estimation
-forecast_idx – row indices corresponding to the next month forecast period
-forecast_dates – dates associated with the next month's forecast period
-Matrix Utilities
-cov_to_cor() – converts a covariance matrix into a correlation matrix
-make_psd() – forces a matrix to be positive semidefinite by truncating negative eigenvalues
-safe_cor() – computes a sample correlation matrix and applies PSD correction and normalisation
-normalize_Q_to_R() – converts the DCC intermediate matrix Q_t into a valid correlation matrix R_t
-Long-Run Correlation Target
-S_target – long-run correlation target used in the DCC recursion
-safe_cor(Z_insample) – benchmark correlation target based on the sample correlation of in-sample standardised residuals
-build_nlshrink_target(Z_insample) – nonlinear-shrinkage estimator of the covariance matrix, converted into a correlation target for DCC
-Sigma_nl – nonlinear-shrunk covariance estimate based on the in-sample standardised residuals
+- managed_portfolios – data frame containing daily returns of all factors and managed portfolios
+- dates_block – vector of trading dates aligned across all series
+- init_window – initial estimation window for univariate GARCH estimation, typically 504 trading days
+- min_corr_window – minimum number of in-sample observations required for DCC estimation
+- Z_block – matrix of standardised residuals from the univariate GARCH models
+- SIGMA_block – matrix of conditional volatility forecasts from the univariate GARCH models
+- MU_block – matrix of conditional mean forecasts from the univariate GARCH models
+- RESID_block – matrix of residuals, defined as returns minus conditional mean forecasts
+  
+## Univariate GARCH Estimation
+- fit_garch_expanding_monthly() – fits a univariate GARCH(1,1) model to one return series using an expanding window with monthly refits
+- run_all_garch_monthly() – applies the monthly expanding-window GARCH estimation to all return series
+- mu – one-step-ahead conditional mean forecast from the univariate GARCH model
+- sigma – one-step-ahead conditional volatility forecast from the univariate GARCH model
+- sigma2 – one-step-ahead conditional variance forecast, equal to sigma^2
+- resid – forecast error, defined as return minus conditional mean
+- z – standardised residual, defined as resid / sigma
+- refit_date – date on which the GARCH model is re-estimated
+
+## GARCH Block Construction
+- build_garch_blocks() – combines the list of univariate GARCH outputs into aligned matrices
+- Z_block – T x N matrix of standardised residuals
+- SIGMA_block – T x N matrix of conditional volatilities
+- MU_block – T x N matrix of conditional means
+- RESID_block – T x N matrix of residuals
+
+## Monthly Forecasting Index
+- make_month_index() – constructs the sequence of expanding in-sample windows and next-month forecast blocks
+- refit_month – year-month identifier of the estimation month
+- refit_idx – row index of the month-end estimation date
+- refit_date – final trading day of the estimation month
+- insample_idx – row indices used for in-sample DCC estimation
+- forecast_idx – row indices corresponding to the next month forecast period
+- forecast_dates – dates associated with the next month's forecast period
+  
+## Matrix Utilities
+- cov_to_cor() – converts a covariance matrix into a correlation matrix
+- make_psd() – forces a matrix to be positive semidefinite by truncating negative eigenvalues
+- safe_cor() – computes a sample correlation matrix and applies PSD correction and normalisation
+- normalize_Q_to_R() – converts the DCC intermediate matrix Q_t into a valid correlation matrix R_t
+
+## Long-Run Correlation Target
+- S_target – long-run correlation target used in the DCC recursion
+- safe_cor(Z_insample) – benchmark correlation target based on the sample correlation of in-sample standardised residuals
+- build_nlshrink_target(Z_insample) – nonlinear-shrinkage estimator of the covariance matrix, converted into a correlation     target for DCC
+- Sigma_nl – nonlinear-shrunk covariance estimate based on the in-sample standardised residuals
 
 The nonlinear-shrinkage target is used to stabilise the long-run correlation matrix in high-dimensional settings where the sample covariance or correlation matrix may be noisy or ill-conditioned.
 
-DCC Model Objects
-a – DCC news parameter, controlling the impact of the most recent shock
-b – DCC persistence parameter, controlling the influence of the previous DCC state
-phi – total persistence parameter, equal to a + b
-S – long-run correlation target used in the DCC recursion
-Q_t – intermediate covariance-like matrix in the DCC recursion
-R_t – conditional correlation matrix implied by Q_t
-Q_prev – lagged DCC state used in recursive updating
-Q_T – final in-sample DCC state used as the starting point for forecasting
+## DCC Model Objects
+- a – DCC news parameter, controlling the impact of the most recent shock
+- b – DCC persistence parameter, controlling the influence of the previous DCC state
+- phi – total persistence parameter, equal to a + b
+- S – long-run correlation target used in the DCC recursion
+- Q_t – intermediate covariance-like matrix in the DCC recursion
+- R_t – conditional correlation matrix implied by Q_t
+- Q_prev – lagged DCC state used in recursive updating
+- Q_T – final in-sample DCC state used as the starting point for forecasting
 
-DCC Filtering and Estimation
-dcc_filter() – runs the DCC recursion over the standardised residual series and returns the sequence of Q_t and R_t
-dcc_negloglik() – computes the Gaussian negative log-likelihood for a given parameter vector (a, b)
-estimate_dcc() – estimates the DCC parameters (a, b) by minimising the negative log-likelihood subject to the standard DCC constraints
+## DCC Filtering and Estimation
+- dcc_filter() – runs the DCC recursion over the standardised residual series and returns the sequence of Q_t and R_t
+- dcc_negloglik() – computes the Gaussian negative log-likelihood for a given parameter vector (a, b)
+- estimate_dcc() – estimates the DCC parameters (a, b) by minimising the negative log-likelihood subject to the standard DCC   constraints
 
-Parameter restrictions:
+## Parameter restrictions:
+- a >= 0
+- b >= 0
+- a + b < 1
 
-a >= 0
-b >= 0
-a + b < 1
+## Outputs from estimate_dcc():
+- a – estimated DCC news parameter
+- b – estimated DCC persistence parameter
+- S – long-run correlation target used in estimation
+- Q_T – final in-sample DCC state
+- opt – optimisation output object
+- n_obs – number of complete in-sample observations used in estimation
 
-Outputs from estimate_dcc():
+## Correlation Forecasting
+- forecast_dcc_correlations() – produces multi-step-ahead forecasts of the DCC correlation matrices
+- dcc_fc – list of future DCC states and correlation matrices
+- R_forecasts – list of forecasted daily correlation matrices for the next month
 
-a – estimated DCC news parameter
-b – estimated DCC persistence parameter
-S – long-run correlation target used in estimation
-Q_T – final in-sample DCC state
-opt – optimisation output object
-n_obs – number of complete in-sample observations used in estimation
-Correlation Forecasting
-forecast_dcc_correlations() – produces multi-step-ahead forecasts of the DCC correlation matrices
-dcc_fc – list of future DCC states and correlation matrices
-R_forecasts – list of forecasted daily correlation matrices for the next month
+## Covariance Reconstruction
+- build_cov_from_sigma_and_R() – rebuilds daily covariance matrices using forecasted volatilities and forecasted correlations
+- D_t – diagonal matrix of conditional volatilities at date t
+- H_t – conditional covariance matrix at date t
+- H_forecasts – list of daily covariance forecasts for the next month
 
-Covariance Reconstruction
-build_cov_from_sigma_and_R() – rebuilds daily covariance matrices using forecasted volatilities and forecasted correlations
-D_t – diagonal matrix of conditional volatilities at date t
-H_t – conditional covariance matrix at date t
-H_forecasts – list of daily covariance forecasts for the next month
+## Monthly Covariance Aggregation
+- aggregate_monthly_cov() – aggregates daily covariance forecasts into a monthly covariance matrix by summing valid daily      covariance forecasts
+- H_month – monthly forecasted covariance matrix obtained by aggregating the daily covariance forecasts over the next month
 
-Monthly Covariance Aggregation
-aggregate_monthly_cov() – aggregates daily covariance forecasts into a monthly covariance matrix by summing valid daily covariance forecasts
-H_month – monthly forecasted covariance matrix obtained by aggregating the daily covariance forecasts over the next month
-Master Function
-run_dcc_monthly() – executes the full monthly DCC forecasting procedure on expanding windows
+# Master Function
+- run_dcc_monthly() – executes the full monthly DCC forecasting procedure on expanding windows
 
 For each monthly refit date, the function:
-
-selects the in-sample block of standardised residuals
-constructs the long-run correlation target
-estimates the DCC parameters (a, b)
-forecasts next-month daily correlation matrices
-combines those correlation forecasts with the univariate GARCH volatility forecasts
-aggregates the daily covariance forecasts into a monthly covariance matrix
+1. selects the in-sample block of standardised residuals
+2. constructs the long-run correlation target
+3. estimates the DCC parameters (a, b)
+4. forecasts next-month daily correlation matrices
+5. combines those correlation forecasts with the univariate GARCH volatility forecasts
+6. aggregates the daily covariance forecasts into a monthly covariance matrix
 
 Output Stored for Each Refit Month
-refit_month – month identifier of the estimation block
-refit_date – final trading day of the estimation month
-insample_idx – row indices used in DCC estimation
-forecast_idx – row indices used for forecasting
-forecast_dates – dates in the next-month forecast horizon
-a – estimated DCC news parameter
-b – estimated DCC persistence parameter
-S – long-run correlation target
-Q_T – final in-sample DCC state
-R_forecasts – forecasted daily correlation matrices
-H_forecasts – forecasted daily covariance matrices
-H_month – aggregated monthly covariance forecast
-opt – optimiser output from the DCC estimation step
+- refit_month – month identifier of the estimation block
+- refit_date – final trading day of the estimation month
+- insample_idx – row indices used in DCC estimation
+- forecast_idx – row indices used for forecasting
+- forecast_dates – dates in the next-month forecast horizon
+- a – estimated DCC news parameter
+- b – estimated DCC persistence parameter
+- S – long-run correlation target
+- Q_T – final in-sample DCC state
+- R_forecasts – forecasted daily correlation matrices
+- H_forecasts – forecasted daily covariance matrices
+- H_month – aggregated monthly covariance forecast
+- opt – optimiser output from the DCC estimation step
 
 Conceptual Flow
-estimate univariate GARCH models for each return series
-Extract standardised residuals and conditional volatility forecasts
-build a stable long-run correlation target, optionally using nonlinear shrinkage
-estimate DCC parameters on the in-sample standardised residuals
-forecast next month's daily conditional correlations
-Combine the forecasted correlations with the forecasted univariate volatilities
-aggregate daily covariance forecasts into a monthly covariance matrix
+1. estimate univariate GARCH models for each return series
+2. Extract standardised residuals and conditional volatility forecasts
+3. build a stable long-run correlation target, optionally using nonlinear shrinkage
+4. estimate DCC parameters on the in-sample standardised residuals
+5. forecast next month's daily conditional correlations
+6. Combine the forecasted correlations with the forecasted univariate volatilities
+7. aggregate daily covariance forecasts into a monthly covariance matrix
 
 ### Network analysis (Zhang)
 Important:
