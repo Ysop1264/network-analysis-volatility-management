@@ -1001,14 +1001,6 @@ network_centrality <- function(adjacency_pos, adjacency_neg){
   ))
 }
 
-
-res <- dcc_test[[first_ok]]
-
-res$refit_date
-res$a
-res$b
-dim(res$H_month)
-range(eigen(res$H_month, symmetric = TRUE)$values)
 # =================================================
 # Benchmarks
 # =================================================
