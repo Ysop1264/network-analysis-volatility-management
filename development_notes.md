@@ -31,3 +31,5 @@ This is definitely the most intense part of the code, and probably will take the
 So hopefully, we can get this part done tomorrow, and I can confidently say that I understand every single part of it. I can guarantee and write up for this part after the non-linear shrinkage part and finalising all functions
 
 24/03/2025 - Yadhu (23:57): Nvm, added the nonlinear shrinkage part. Everything runs for now, but it could all be fake, and I might be hallucinating
+
+25/03/2026 - Kornel (13:10): Created two additional functions (defined in functions section) for summary statistics table. Description available at the beggining of the corresponding functions.

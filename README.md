@@ -15,7 +15,7 @@ Important:
 - `managed_portfolios` - final dataset of factors and managed portfolios ready for the analysis 
 
 For manipulation:
-- `Factors_joined` - joined Fama & French factors with momentum factor and industry managed portfolios (raw data)
+- `factors_joined` - joined Fama & French factors with momentum factor and industry managed portfolios (raw data)
 
 ### Functions (Kornel & Yadhu)
 - Functions are defined after data section and have corresponding documentation there

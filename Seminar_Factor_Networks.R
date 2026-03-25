@@ -97,6 +97,53 @@ compute_SR <- function(r){
   return(SR)
 }
 
+#'Creates the summary statistics table of managed portfolios returns.
+#'The means, standard deviations are annualized and in percentages.
+#'The min and max are in percentages.
+#'The Sharpe Ratio is annualized.
+#'
+#'@param factor_returns data frame containing the returns of managed portfolios
+#'@return returns the data frame with summary statistics
+#'
+summary_stats_table <- function(factor_returns){
+  if(class(factor_returns[[1]]) == "Date"){
+    factor_returns <- factor_returns[,-1, drop = FALSE]
+  }
+  
+  means <- colMeans(factor_returns) * 100 * 252
+  sd <- sapply(factor_returns, sd) * 100 * sqrt(252)
+  kurtosis <- sapply(factor_returns, kurtosis)
+  skewness <- sapply(factor_returns, skewness)
+  min <- sapply(factor_returns, min) * 100
+  max <- sapply(factor_returns, max) * 100
+  Sharpe <- means/sd 
+  
+  df <- data.frame(
+    Mean = round(means,4),
+    SD = round(sd, 4),
+    Kurtosis = round(kurtosis, 4),
+    Skewness = round(skewness, 4),
+    Min = round(min, 4),
+    Max = round(max, 4),
+    SR = round(Sharpe,4)
+    
+  )
+  return(df)
+}
+
+#'Creates the short summary statistics table of managed portfolios returns.
+#'The means, standard deviations are annualized and in percentages.
+#'The min and max are in percentages.
+#'The Sharpe Ratio is annualized.
+#'
+#'@param factor_returns data frame containing the returns of managed portfolios
+#'@return returns the data frame with summary statistics
+#'
+summary_stats_short_table <- function(factor_returns){
+  return(t(summary_stats_table(factor_returns)))
+}
+
+
 # Constructed Realised Variance
 rv_monthly <- managed_portfolios %>%
   mutate(month = floor_date(date, "month")) %>%
@@ -875,6 +922,57 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
   names(out) <- sapply(out, function(x) as.character(x$refit_date))
   out
 }
+
+# Running small DCC sample to check
+nrow(Z_block)
+nrow(SIGMA_block)
+length(managed_portfolios$date)
+class(Z_block)
+class(SIGMA_block)
+
+n_test <- min(
+  1100,
+  nrow(Z_block),
+  nrow(SIGMA_block),
+  length(managed_portfolios$date)
+)
+
+system.time({
+  dcc_test <- run_dcc_monthly(
+    Z_block = Z_block[1:n_test, , drop = FALSE],
+    SIGMA_block = SIGMA_block[1:n_test, , drop = FALSE],
+    dates_block = managed_portfolios$date[1:n_test],
+    min_corr_window = 252,
+    S_builder = build_nlshrink_target,
+    trace = TRUE
+  )
+})
+
+length(dcc_test)
+
+summary_df <- data.frame(
+  refit_date = as.Date(sapply(dcc_test, `[[`, "refit_date")),
+  a = sapply(dcc_test, `[[`, "a"),
+  b = sapply(dcc_test, `[[`, "b"),
+  has_H_month = sapply(dcc_test, function(x) !is.null(x$H_month))
+)
+
+print(summary_df)
+print(summary(summary_df$a))
+print(summary(summary_df$b))
+print(table(summary_df$has_H_month))
+
+first_ok <- which(sapply(dcc_test, function(x) {
+  !is.null(x$H_month) && all(is.finite(x$H_month))
+}))[1]
+
+res <- dcc_test[[first_ok]]
+
+res$refit_date
+res$a
+res$b
+dim(res$H_month)
+range(eigen(res$H_month, symmetric = TRUE)$values)
 
 # Adjacency matrix construction 
 # @param sigma_hat is the forecasted covariance matrix 
