@@ -33,3 +33,4 @@ So hopefully, we can get this part done tomorrow, and I can confidently say that
 24/03/2025 - Yadhu (23:57): Nvm, added the nonlinear shrinkage part. Everything runs for now, but it could all be fake, and I might be hallucinating
 
 25/03/2026 - Kornel (13:10): Created two additional functions (defined in functions section) for summary statistics table. Description available at the beggining of the corresponding functions.
+25/03/2026 - Zhang (13:56): Made 3 functions for adjacency matrix construction, eigenvector centrality and spillover measures. Descriptions in functions part. Only thing to do is to check if the estiomated correlation matrix works on the 3 functions but I ran random tests on random matrices and the functions worked in these random tests. 
