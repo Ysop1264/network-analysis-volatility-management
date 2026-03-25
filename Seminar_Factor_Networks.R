@@ -6,6 +6,7 @@ install.packages("frenchdata")
 install.packages("dplyr")
 install.packages("moments")
 install.packages("sandwich")
+install.packages("rlang")
 install.packages("lmtest")
 install.packages("lubridate")
 install.packages("nlshrink")
@@ -950,14 +951,37 @@ network_centrality <- function(adjacency_pos, adjacency_neg){
   ))
 }
 
+# Spillover measures to get the systemic risk exposure
+# @param adjacency_pos Positive adjacency matrix
+# @param adjacency_neg Negative adjacency matrix 
+# @param ec_pos EC+
+# @param ec_neg EC-
+# @param sigma_vec Vector of volatilities
+# @return List with spillover_pos and spillover_neg
+spillovers <- function(adjacency_pos, adjacency_neg, ec_pos, ec_neg, sigma_vec) {
+  # column vector 
+  sigma_vec <- as.numeric(sigma_vec)
+  # temporary matrix A with zeros on the diagonal for i not j
+  temp_adjacency_pos <- adjacency_pos 
+  diag(temp_adjacency_pos) <- 0
+  temp_adjacency_neg <- adjacency_neg
+  diag(temp_adjacency_neg) <- 0
 
-res <- dcc_test[[first_ok]]
+  # positive spillovers 
+  init_spillover_pos <- as.numeric(temp_adjacency_pos %*% sigma_vec)
+  spillover_pos <- ec_pos * init_spillover_pos
 
-res$refit_date
-res$a
-res$b
-dim(res$H_month)
-range(eigen(res$H_month, symmetric = TRUE)$values)
+  # negative spillovers
+  init_spillover_neg <- as.numeric(temp_adjacency_neg %*% sigma_vec)
+  spillover_neg <- ec_neg * init_spillover_neg
+  
+  # return the list
+  return(list(
+    spillover_pos = spillover_pos,
+    spillover_neg = spillover_neg
+  ))
+}
+
 # =================================================
 # Benchmarks
 # =================================================
