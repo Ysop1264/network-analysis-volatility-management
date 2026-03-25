@@ -96,6 +96,53 @@ compute_SR <- function(r){
   return(SR)
 }
 
+#'Creates the summary statistics table of managed portfolios returns.
+#'The means, standard deviations are annualized and in percentages.
+#'The min and max are in percentages.
+#'The Sharpe Ratio is annualized.
+#'
+#'@param factor_returns data frame containing the returns of managed portfolios
+#'@return returns the data frame with summary statistics
+#'
+summary_stats_table <- function(factor_returns){
+  if(class(factor_returns[[1]]) == "Date"){
+    factor_returns <- factor_returns[,-1, drop = FALSE]
+  }
+  
+  means <- colMeans(factor_returns) * 100 * 252
+  sd <- sapply(factor_returns, sd) * 100 * sqrt(252)
+  kurtosis <- sapply(factor_returns, kurtosis)
+  skewness <- sapply(factor_returns, skewness)
+  min <- sapply(factor_returns, min) * 100
+  max <- sapply(factor_returns, max) * 100
+  Sharpe <- means/sd 
+  
+  df <- data.frame(
+    Mean = round(means,4),
+    SD = round(sd, 4),
+    Kurtosis = round(kurtosis, 4),
+    Skewness = round(skewness, 4),
+    Min = round(min, 4),
+    Max = round(max, 4),
+    SR = round(Sharpe,4)
+    
+  )
+  return(df)
+}
+
+#'Creates the short summary statistics table of managed portfolios returns.
+#'The means, standard deviations are annualized and in percentages.
+#'The min and max are in percentages.
+#'The Sharpe Ratio is annualized.
+#'
+#'@param factor_returns data frame containing the returns of managed portfolios
+#'@return returns the data frame with summary statistics
+#'
+summary_stats_short_table <- function(factor_returns){
+  return(t(summary_stats_table(factor_returns)))
+}
+
+
 # Constructed Realised Variance
 rv_monthly <- managed_portfolios %>%
   mutate(month = floor_date(date, "month")) %>%
