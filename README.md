@@ -17,9 +17,6 @@ Important:
 For manipulation:
 - `factors_joined` - joined Fama & French factors with momentum factor and industry managed portfolios (raw data)
 
-### Functions (Kornel & Yadhu)
-- Functions are defined after data section and have corresponding documentation there
-
 ### Benchmarks section (Kornel)
 
 Important:
