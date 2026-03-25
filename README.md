@@ -2,8 +2,8 @@
 
 
 
-## Object definitions:
-### Data section (Kornel)
+# Object definitions:
+# Data section (Kornel)
 
 Important: 
 - `start_date` - start date of the dataset (including)
@@ -40,7 +40,7 @@ For manipulation:
 - `MVE_returns` - returns of MVE strategy before multiplying by c
 - `EW_returns` - returns of equally weighted buy-and-hold strategy (without dates)
 
-### DCC-NL Covariance Estimation
+# DCC-NL Covariance Estimation
 Important
 - managed_portfolios – data frame containing daily returns of all factors and managed portfolios
 - dates_block – vector of trading dates aligned across all series
@@ -134,7 +134,7 @@ The nonlinear-shrinkage target is used to stabilise the long-run correlation mat
 - aggregate_monthly_cov() – aggregates daily covariance forecasts into a monthly covariance matrix by summing valid daily      covariance forecasts
 - H_month – monthly forecasted covariance matrix obtained by aggregating the daily covariance forecasts over the next month
 
-# Master Function
+## Master Function
 - run_dcc_monthly() – executes the full monthly DCC forecasting procedure on expanding windows
 
 For each monthly refit date, the function:
