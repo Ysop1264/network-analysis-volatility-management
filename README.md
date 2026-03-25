@@ -42,3 +42,36 @@ For manipulation:
 - `rv_lag_MVE` - data frame containing lagged realized variance
 - `MVE_returns` - returns of MVE strategy before multiplying by c
 - `EW_returns` - returns of equally weighted buy-and-hold strategy (without dates)
+
+### Network analysis (Zhang)
+Important:
+- 'tau' - The threshold parameter (ranging from 0.1 to 0.5)
+- 'taus' – Sequence of threshold values used in the grid search (0.1 to 0.5)
+- 'grid_tau' - A list object storing the results of the grid search across 0.1 to 0.5
+- 'd' – Vector of inverse square roots of the diagonal elements of the precision matrix for scaling
+- 'adjacency_pos' - positive A+
+- 'adjacency_neg' - negative A-
+- 'ec_pos' - EC+
+- 'ec_neg' - EC-
+- 'spillover_pos' - S+
+- 'spillover_neg' - S-
+- 'partial_corr' - partial correlation
+- 'theta' - precision matrix
+- 'sigma_hat' – Forecasted covariance matrix
+- 'N' – Number of variables (dimension of the covariance/precision matrix)
+- 'eigenvalue_pos' – Eigenvalues of the positive adjacency matrix
+- 'eigenvector_pos' – Leading eigenvector of the positive adjacency matrix
+- 'ec_pos' – EC⁺, normalized to sum to 1.
+- 'eigenvalue_neg' – Eigenvalues of the negative adjacency matrix
+- 'eigenvector_neg' – Leading eigenvector of the negative adjacency matrix
+- 'ec_neg' – EC⁻, normalized to sum to 1.
+- 'sigma_vec' – Vector of individual asset volatilities (standard deviations)
+- 'temp_adjacency_pos' – Adjusted positive adjacency matrix with diagonal elements set to 0
+- 'temp_adjacency_neg' – Adjusted negative adjacency matrix with diagonal elements set to 0
+- 'init_spillover_pos' – Initial positive spillover effects before weighting by centrality
+- 'init_spillover_neg' – Initial negative spillover effects before weighting by centrality
+- 'spillover_pos' – S⁺
+- 'spillover_neg' – S⁻
+- 'adjacency_output' – Temporary object storing outputs of adjacency_matrix() during grid search
+- count_positive – Number of positive links 
+- count_negative – Number of negative links
