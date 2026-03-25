@@ -872,6 +872,57 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
   names(out) <- sapply(out, function(x) as.character(x$refit_date))
   out
 }
+
+# Running small DCC sample to check
+nrow(Z_block)
+nrow(SIGMA_block)
+length(managed_portfolios$date)
+class(Z_block)
+class(SIGMA_block)
+
+n_test <- min(
+  1100,
+  nrow(Z_block),
+  nrow(SIGMA_block),
+  length(managed_portfolios$date)
+)
+
+system.time({
+  dcc_test <- run_dcc_monthly(
+    Z_block = Z_block[1:n_test, , drop = FALSE],
+    SIGMA_block = SIGMA_block[1:n_test, , drop = FALSE],
+    dates_block = managed_portfolios$date[1:n_test],
+    min_corr_window = 252,
+    S_builder = build_nlshrink_target,
+    trace = TRUE
+  )
+})
+
+length(dcc_test)
+
+summary_df <- data.frame(
+  refit_date = as.Date(sapply(dcc_test, `[[`, "refit_date")),
+  a = sapply(dcc_test, `[[`, "a"),
+  b = sapply(dcc_test, `[[`, "b"),
+  has_H_month = sapply(dcc_test, function(x) !is.null(x$H_month))
+)
+
+print(summary_df)
+print(summary(summary_df$a))
+print(summary(summary_df$b))
+print(table(summary_df$has_H_month))
+
+first_ok <- which(sapply(dcc_test, function(x) {
+  !is.null(x$H_month) && all(is.finite(x$H_month))
+}))[1]
+
+res <- dcc_test[[first_ok]]
+
+res$refit_date
+res$a
+res$b
+dim(res$H_month)
+range(eigen(res$H_month, symmetric = TRUE)$values)
 # =================================================
 # Benchmarks
 # =================================================
