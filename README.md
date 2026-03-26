@@ -2,6 +2,9 @@
 
 
 
+
+
+
 # Object definitions:
 # Data section (Kornel)
 
@@ -201,3 +204,20 @@ Important:
 - 'adjacency_output' – Temporary object storing outputs of adjacency_matrix() during grid search
 - count_positive – Number of positive links 
 - count_negative – Number of negative links
+
+
+
+# Libraries in the project
+- `rlang`
+- `tidyverse` - data manipulation after downloading
+- `tidyfinance`
+- `scales`
+- `frenchdata` - downloading dataset from Kenneth Frenchs Library
+- `dplyr`
+- `moments` - library used to calculate higher order moments such as kurtosis and skewness
+- `sandwich`
+- `lmtest`
+- `lubridate`
+- `nlshrink` - used to estimate the covariance matrix with shrinkage from Ledoit & Wolf (2004)
+- `rugarch`
+- `igraph` - library used to make visualisations of the networks
