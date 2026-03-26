@@ -145,6 +145,27 @@ summary_stats_short_table <- function(factor_returns){
   return(t(summary_stats_table(factor_returns)))
 }
 
+#' Graphs the standard line plot of annualized returns
+#'
+#'@param returns_df data frame containing date as first column, and returns as second column
+#'
+graph_annualized_returns <- function(returns_df){
+  
+  # Changing how often there are ticks on xaxis and y axis
+  axis <- par(lab = c(20, 8, 5))
+  # Plotting the returns 
+  plot(main = "", xlab = "Date", ylab = "Annaulized returns",
+       y = returns_df[[2]] * 252 , x = as.Date(returns_df[[1]]) , type = "l" )
+  
+  # Creates ticks with rounded values of the annualized returns 
+  y_ticks <- pretty(returns_df[[2]] * 252)
+  abline(h = y_ticks, col = "grey85", lty = 1)
+  lines(y = returns_df[[2]] * 252 , x = as.Date(returns_df[[1]]))
+  
+  
+}
+
+
 
 # Constructed Realised Variance
 rv_monthly <- managed_portfolios %>%
