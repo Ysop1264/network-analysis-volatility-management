@@ -1,14 +1,528 @@
-\documentclass{article}
-\usepackage{graphicx} % Required for inserting images
+\documentclass[11pt]{article}
 
-\title{Final_Report_First_Draft}
-\author{Yadhu Soppin}
-\date{March 2026}
+\textwidth 16cm 
+\topmargin 0cm 
+\oddsidemargin 0cm
+\evensidemargin 0cm 
+\textheight 22.5cm 
+\headsep 0.7cm
 
+\usepackage{booktabs}
+\usepackage{threeparttable}
+\usepackage{caption}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{natbib}
+\usepackage{relsize}
+\usepackage{econometrics}
+\usepackage{amsmath}
+
+\usepackage[margin=1in]{geometry} 
+\usepackage{amsmath,amsthm,amssymb}
+\usepackage{amsmath,amsthm,amssymb}
+\usepackage{bbm}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\Z}{\mathbb{Z}}
+
+
+ 
+\newenvironment{theorem}[2][Theorem]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
+\newenvironment{lemma}[2][Lemma]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
+\newenvironment{exercise}[2][Exercise]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
+\newenvironment{problem}[2][Problem]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
+\newenvironment{question}[2][Question]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
+\newenvironment{corollary}[2][Corollary]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
+
+\newenvironment{solution}{\begin{proof}[Solution]}{\end{proof}}
+ 
 \begin{document}
+ 
+ 
+\title{Seminar in Investing: Research Proposal }
+\author{Group 6 \\ \\Kornel Baranowski (642597)\\ Kamakshi Murthi (639592)\\ Yadhu Soppin (636866)\\ Eu Zhang (649200)}
 
 \maketitle
-
+\newpage
 \section{Introduction}
-Hello, This is a file
+\label{sec:introduction}
+In modern asset pricing and portfolio construction, factor investing plays a central role and has gained large traction over the years. A large body of empirical research has shown that systemic factors such as market, size, value and momentum help explain a significant share of variation in stock returns \citep{fama2015five, jegadeesh1993returns}. Although the strategy of factor investing has proven to be effective over long horizons, its risk is far from being constant \citep{moreira2017volatility}. Therefore, periods of turbulence in the stock market often lead to large fluctuations in factor performance, and managing time-varying volatility is an imperative problem for investors. 
+
+One influential approach to this problem was proposed by \cite{moreira2017volatility}. According to their strategy, investors should reduce exposure when volatility is high and increase exposure when volatility is low. Despite a strong empirical performance, \cite{moreira2017volatility} mainly treats factor risk as a property of each factor. In reality, financial markets are often highly interconnected, with volatility rising simultaneously across assets and factors, particularly during periods of financial stress \citep{DieboldYilmaz2009}. This indicates that a well created strategy portfolio should take into account both individual and systemic risk. Moreover, research by \cite{ConnorKorajczykLinton2006} suggests that the volatility of returns contains both factor-specific and common components that evolve with time. 
+
+This paper proposes examining financial markets through a network perspective. The aim is to understand whether the dependence structure between factors are important in terms of having a well performing strategy. Under this analysis, it is possible to capture how shocks propagate through the network and identify the factors with the highest systemic influence within. This perspective of utilising networks was previously explored for assets by \cite{peralta2016network}, with sufficient evidence that network analyses can improve portfolio construction. Therefore, applying this in the context of factor returns, we construct portfolios that adjust exposures based on both forecasted volatility and measures of spillovers across a range of factors. 
+
+Motivated by all these insights, our research question is as follows:
+\\
+
+\noindent \textit{Does risk adjusted performance of volatility-managed factor portfolios improve, when incorporating a network of factors, after accounting for their dependencies?}
+\\
+
+The goal of our research question is to investigate whether accounting for factor dependencies improves upon existing volatility management literature. To elaborate further, we want to understand how systemic relationships between factors affect portfolio risk and thus, help investors design better investment strategies that remain more robust to periods of high market uncertainty. 
+
+The remainder of the paper is structured as such: Section \ref{sec:literature_review} presents the literature review to motivate our research; Section \ref{sec:data} presents the data and its general characteristics; Section \ref{sec:methodology} explores the methodology used in this paper and its performance measures to portfolio benchmarks. 
+
+\section{Literature Review}
+\label{sec:literature_review}
+
+This section reviews the literature that motivates the research question and methodological decisions. The analysis aims to combine the three strands of research, i.e. volatility-managed investing, dynamic covariance estimation, and network-based measures of financial connectedness. Taken together, this explains why a portfolio strategy should not only take into account changing volatility but also the structure of spillovers across assets. 
+
+Our research builds upon \cite{moreira2017volatility}, which focuses on the highly documented persistence of financial market volatility. They show that scaling factor returns by the inverse of their lagged realised variance (RV) produces substantial alphas, higher Sharpe ratios, and large utility gains across a broad set of factors, such as the market, value, momentum,  investment, currency carry trade, etc. Interestingly, \cite{moreira2017volatility} further imply that the alpha of volatility-managed portfolios is informative of the dynamics behind the price of risk. Positive alphas suggest that the conditional price of risk is negatively related to its variance, as they do not increase sufficiently when volatility rises. The main intuition behind these results is that expected returns does not increase proportionality with its volatility. Consequently, an optimal strategy would reduce risk exposure during highly volatile periods and increase risk exposure during low volatility periods. These findings differ from standard risk-based explanations where investors are compensated with higher expected returns, proportional to the risk undertaken. 
+
+While these studies focus on managing time series variation in factor risks, they treat each individual factors as having independent sources of volatility. However, there are several studies that show that volatility contains important common components across assets and more specifically factors. \cite{ConnorKorajczykLinton2006} develop a dynamic approximate factor model where return volatility is driven by three sources. Their results show that both factor volatility and common components display persistence and long-term variation. Therefore, these findings hint at the fact that analysing the volatility of factors in isolation may overlook important potential systemic influences. 
+
+To address this limitation, academic literature has explored the idea of the interconnectedness of the financial market via networks. In this framework, assets are represented as nodes and the relationships between them capture dependence structures such as correlations or spillovers. \cite{DieboldYilmaz2009} show that return and volatility spillovers across financial markets are substantial and vary considerably over time, especially during crisis periods. Network-based approaches therefore provide a useful way to capture systemic financial risk. To extract meaningful information from networks, several studies propose filtering techniques that remove noisy relationships for high-dimensional correlation matrices while preserving the most informative correlations. For instance, \cite{MusmeciAsteDiMatteo2014} use similar correlation-based networks to study the diversification and persistence in financial markets. Moreover, this literature indicates that network structures can also be applied to portfolio construction. \\
+Recent work also strengthens our research question by motivating use of network-based dependence measures in asset pricing. \cite{MisirliScidaVelikov2025} develop intra-industry networks based on volatility spillovers and show how these networks contain economically meaningful information for return prediction. This paper suggests that peripheral stocks may play a particularly informative role within financial networks, whereas highly central stocks are more likely to embed information that is already diffused accross connected assets. This aligns with our methodology which penalises central stocks more than peripheral stocks within the network structure, and reinforces the idea that network structure is economically meaningful for portfolio design and asset pricing. Similarly, \cite{peralta2016network} argues that the centrality of an asset reflects its systemic dimension and should be weighted accordingly.
+
+However, a challenging issue occurs in estimating high-dimensional covariance matrices. While \cite{ledoit2004well} shows that shrinkage can improve the stability of covariance matrices, we see that \cite{engle2019large} provides an interesting solution by combining Dynamic Conditional Correlation (DCC) with non-linear shrinkage (DCC-NL). Their framework addresses the time-series dimension through DCC dynamics and the cross-sectional dimension through non-linear shrinkage of the unconditional correlation target. This method was used in order to create a more expandable methodology. It also provides a theoretical way to obtain more stable time-varying dependence estimates before constructing the factor network.
+
+
+Despite the strong empirical performance of \cite{moreira2017volatility}, it remains primarily a time series risk management strategy. In multi-factor settings, the overall portfolio exposure is scaled in response to aggregate volatility, while the relative weights of individual factors remain fixed. This suggests that risk management could potentially be improved by accounting for both individual factor volatility and its volatility due to its dependencies on other factors within the financial system. 
+Bringing in a network perspective provides a natural way of capturing such dependencies. By representing factors as nodes connected through dependence measures, a network analysis makes it possible to assess not only pairwise correlations, but also the systemic importance of individual factors that is based on their centrality to other factors.
+
+Altogether, the extensive literature highlights two main insights. Firstly, volatility management can substantially improve the performance of factor portfolios by adjusting exposures to time-varying risk \citep{moreira2017volatility}. Second, financial markets exhibit strong interconnectedness, where the risk of an asset depends not only on its own volatility but also on its relationship with other assets in the system, which can create spillover effects. However, existing volatility-managed portfolio strategies typically focus only on the time-series dimension of risk and largely ignore these cross-sectional dependencies \citep{DieboldYilmaz2009, MusmeciAsteDiMatteo2014, peralta2016network}. Hence, this paper aims to integrate network-based measures of factor connectedness into \cite{moreira2017volatility}'s volatility-managed portfolio framework. By combining volatility forecasting with network-based spillover measures, we investigate whether accounting for systemic dependencies between factors can further improve portfolio performance.
+\section{Data}
+\label{sec:data}
+The data in this research is taken from Kenneth French's website (\cite{french2026data}). It is chosen due to the ease of availability of the factor and industry portfolio returns for any investor. First, the standard five Fama French factors are considered from \cite{fama2015five}. Namely, following the same notation, we consider:  market excess return (Mkt), size factor (SMB), value factor (HML), profitability factor (RMW), and investment factor (CMA). Additionally, the momentum (Mom) factor is considered based on the effect documented in \cite{jegadeesh1993returns}. Lastly, the industry portfolios are included as to consider the returns of specific sectors and not only overall market such as, among others  are included Agriculture, Food products and Recreation \footnote{\tiny{All included industry factors: Agriculture, Food products, Candy \& Soda, Beer \& Liquor, Tobacco products, Recreation, Entertainment, Printing and Publishing, Consumer Goods, Apparel, Healthcare, Medical Equipment, Pharmaceutical Products, Chemicals, Rubber and Plastic Products, Textiles, Construction Materials, Construction, Steel Works Etc., Fabricated Products, Machinery, Electrical Equipment, Automobiles and Trucks, Aircraft, Shipbuilding \& Railroad Equipment, Defence, Precious Metals, Non-metallic and Industrial Metal Mining, Coal, Petroleum and Natural Gas, Utilities, Communication, Personal Services, Business Services, Computers, Computer Software, Electronic Equipment, Measuring and Control Equipment, Business Supplies, Shipping Containers, Transportation, Wholesale, Retail, Restaurants \& Hotels \& Motels, Banking, Insurance, Real Estate, Trading, Almost Nothing.}}. Detailed description of the factors is available on \cite{french2026data} website. While \cite{moreira2017volatility} focus on factors like Value and Momentum, these are often diversified across the whole market. Industry portfolios represent sector-specific risk. In a network context, this makes the adjacency matrix much more meaningful than just looking at abstract factors. 
+
+The dataset contains 13886 daily observations on 6 factors and 49 industry portfolios, from $1^{st}$ January 1971 until $31^{st}$ January 2026. Although the dataset contains information on number of factors earlier, the two industries, Healthcare and Computer Software, contained missing observations until 1971. Hence, our analysis begins from 1971 such that there is available data for all factors. For simplicity, the 6 factors and 49 industry portfolios are defined as managed portfolios in our research. Moreover, the managed portfolios are given in percentages, and thus, for further analysis, all returns were divided by 100. Furthermore, the risk-free rate is subtracted from industry portfolios to meaningfully compare them to the excess returns of factors. Given that we first work with the cross-section of the factors and portfolios, no other transformation is needed as the provided data are simple returns. Summary statistics (over the whole period) of the six standard factors and the agriculture portfolio are shown as an example in the Table \ref{tab:summary_stats_of_7_main_factors}. 
+\begin{table}[htbp]
+    \centering
+    \caption{Summary statistics of the first 6 factors and the agriculture portfolio}
+    \label{tab:summary_stats_of_7_main_factors}
+    \begin{tabular}{c|c|c|c|c|c|c|c}
+    \hline
+       ~ & Mkt & Smb & Hml & Rmw & Cma & Mom & Agric  \\ \hline
+        Mean & 7.25 & 1.53 & 3.67 & 3.25 & 2.97 & 7.17 & 8.34  \\ 
+        Standard Deviation & 16.23 & 8.75 & 9.30 & 6.43 & 6.08 & 12.38 & 22.80  \\ 
+        Kurtosis & 18.65 & 19.34 & 13.32 & 11.39 & 10.14 & 21.32 & 16.48  \\ 
+        Skewness & -0.49 & -0.55 & 0.27 & 0.32 & -0.25 & -1.25 & 0.30  \\ 
+        Min & -17.44 & -11.15 & -5.03 & -2.97 & -5.31 & -14.37 & -15.27  \\ 
+        Max & 11.36 & 6.08 & 6.73 & 4.57 & 2.48 & 7.14 & 20.30  \\ 
+        Sharpe Ratio & 0.45 & 0.18 & 0.39 & 0.50 & 0.49 & 0.58 & 0.37 \\ \hline
+    \end{tabular}
+    \begin{minipage} {0.9\linewidth}
+    \textit{{\small Note: The statistics were computed based on the whole dataset spanning from 1st January 1971 until 31st January 2026. Additionally, mean and standard deviation are annualised and presented as percentages; Sharpe ratio is annualised; and minimum and maximum values are presented in percentages.}}
+\end{minipage}
+\end{table}
+
+The returns show standard asset return characteristics of non-normal distribution with higher kurtosis and non-zero skewness. Specifically, it is important to note the existence of outliers (seen clearer on Figure \ref{fig:Factor_returns} in the Appendix). These observations are neither removed nor windsorised, as the strategy outlined in the methodology will be tested for both calm and more turbulent periods. Lastly, the annualised Sharpe Ratios introduced in \cite{Sharpe1966} are included to show the risk-adjusted performance of factors and portfolios. 
+
+
+\section{Methodology}
+\label{sec:methodology}
+This section proposes a framework for incorporating volatility scaling with a network structure of dynamic managed portfolios. In the following sections, the set $N$ corresponds to the set of chosen managed portfolios; $T$ corresponds to the sample size.
+
+\subsection{Realised Variance Construction}
+We begin with a baseline measure of RV, constructed from daily managed portfolios returns within month m:
+\begin{equation}
+\label{eq:realized_variance_moreria}
+RV_{i,m} =
+\sum_{d=1}^{D_t}
+\left(
+f_{i,m,d}
+-
+\frac{1}{D_t}\sum_{d=1}^{D_t} f_{i,m,d}
+\right)^2
+\end{equation}
+where $f_{i,m,d}$ denotes the daily return of managed portfolio $i$ on day $d$ within month $m$, $RV_{i,m}$ denotes the corresponding RV in month $m$, and $D_t$ denotes the number of trading days in month $m$, in line with the construction of RV in \cite{moreira2017volatility}. This ensures consistency with the benchmark volatility-managed strategy outlined in Section \ref{sec:benchmark_models}. 
+
+\subsection{Network Structure Creation}
+To capture how shocks propagate across our managed portfolios, the network analysis is conducted. First, the Dynamic Conditional Correlation with non-linear shrinkage (DCC-NL) as proposed by \cite{engle2019large}, is estimated to obtain the conditional (time-varying) correlation and volatilities forecasts. This choice ensures our network links are statistically stable and that the standard sample correlation matrix does not suffer from severe estimation errors, over-fitting, or near-singularity, leading to unstable and spurious dependence structures under the high-dimensional setting of managed portfolios. 
+
+Secondly, the adjacency matrix representing the network is constructed through partial correlations derived from the precision matrix of the DCC-NL covariance estimate. Here, the metrics provides a cleaner representation of the connectedness between factors, allowing us to avoid spurious links in the network, similar to \cite{peralta2016network}. This is followed by using eigenvector centrality (EC) to obtain a measure of network centrality following \cite{peralta2016network, bonacich2007eigenvector, MisirliScidaVelikov2025}. Additionally, spillover measures are constructed to measure systemic factor exposure, which is then used to build the network penalty function. This is motivated by \cite{DieboldYilmaz2009} who show that volatility spillovers are substantial. The network penalty function penalises more central factors and rewards more peripheral factors, as seen in \cite{MisirliScidaVelikov2025}. Ultimately, we calculate portfolio weights that are inversely scaled with respect to volatility and the network penalty function. 
+\subsubsection{DCC-NL}
+The conditional covariance matrix is estimated through the DCC model of \cite{engle2002dynamic}, enhanced with non-linear shrinkage \citep{engle2019large}. This framework is particularly valuable in high-dimensional settings, as it improves the estimation of the unconditional correlation target while retaining the parsimonious DCC structure. \\
+Let $r_d$ denote the vector of daily factor returns on trading day $d$. The conditional covariance matrix $H_t$ is decomposed as:
+\begin{equation} \label{DCC_cond_cov}
+H_d = D_d R_d D_d,
+\end{equation}
+where $D_d = \mathrm{diag}(\sigma_{1,d}, \dots, \sigma_{N,d})$ is a diagonal matrix of conditional standard deviations obtained from univariate GARCH(1,1) models, and $R_d$ is the time-varying correlation matrix. \\
+Using the standardized returns $s_d = D_d^{-1} r_d$, the DCC dynamics are defined as: 
+\begin{equation} \label{eq:DCC_dynamics}
+Q_d = (1 - \alpha - \beta)\bar{C}
++ \alpha s_{d-1}s_{d-1}'
++ \beta Q_{d-1},
+\end{equation}
+where $\hat{C}$ is a non-linearly shrunk estimate of the unconditional correlation matrix of standardised returns, which serves as the long-run target in the DCC dynamics. The non-linear shrinkage is applied to the unconditional correlation target, not the time-varying covariance matrices. The conditional correlation matrix is then obtained by standard normalisation: 
+\begin{equation} \label{eq:DCC_cond_corr}
+R_d = \mathrm{Diag}(Q_d)^{-1/2}
+Q_d
+\mathrm{Diag}(Q_d)^{-1/2}.
+\end{equation}
+
+To estimate the time-varying conditional covariance matrix $H_d$, the univariate GARCH(1,1) models for each managed portfolios are estimated to obtain conditional variances. Furthermore, the unconditional correlation matrix $\bar{C}$ is estimated using non-linear shrinkage, and lastly the parameters in equation \ref{eq:DCC_dynamics} are estimated to obtain the time-varying conditional correlation matrix, which is further used in the construction of the above-mentioned network.
+
+As portfolio weights are rebalanced at the monthly frequency, we construct a one-month-ahead covariance forecast by aggregating daily DCC-NL forecasts. Let $D_m$ denote the number of trading days in month $m$. At the end of month $m-1$, the daily covariance matrix is recursively projected forward over all trading days in month $m$. The monthly covariance forecast is defined as:
+\begin{equation}
+\widehat{\Sigma}_{m|m-1}
+=
+\sum_{h=1}^{D_m}
+\widehat{H}_{m,h|m-1},
+\end{equation}
+where $\widehat{H}_{m,h|m-1}$ denotes the $h$-step-ahead daily conditional covariance forecast formed using only information available at the end of month $m-1$. 
+
+This aggregation yields a forward-looking monthly covariance matrix that is consistent with the portfolio rebalancing frequency and captures expected volatility and correlation dynamics over the investment horizon.
+
+\subsubsection{Adjacency Matrix Construction}
+The adjacency matrix is constructed using a modified version of the approach highlighted by \cite{peralta2016network}. Using the estimated covariance matrix, we construct the precision matrix. The precision matrix is useful in highlighting the conditional independence of any two factors $i$ and $j$. In particular, if the $(i,j$)-th element of the precision matrix is zero, variables $i$ and $j$ are conditionally independent given all other variables. Moreover, the use of DCC-NL ensures a well-conditioned covariance matrix, mitigating numerical instability in inversion. Let $H_{m+1|m}$ denote the forecasted covariance matrix at time m + 1 conditioned on the information set available at time m, then the precision matrix ($\Theta$) is given by: 
+\begin{equation}
+\Theta_{m+1|m} = \widehat\Sigma_{m+1|m}^{-1}
+\end{equation}
+A fundamental difficulty in constructing financial networks arises from distinguishing direct from indirect relationships between assets. Since any co-movement between two factors, as measured by a standard correlation, could reflect a direct link or shared exposure to other factors, there is a risk of introducing spurious connections in a network representation. To address the issue, this paper approaches the construction of the adjacency matrix through partial correlations, which measure the relationship between two variables conditional on all other variables in the system. In short, they capture the direct linear dependence between any two factors. The partial correlation between factors $i$ and $j$ can be directly obtained from the precision matrix as:
+\begin{equation}
+\rho^{\text{partial}}_{ij,m+1|m}
+=
+-\frac{\Theta_{ij,m+1|m}}{\sqrt{\Theta_{ii,m+1|m}\Theta_{jj,m+1|m}}}.
+\end{equation} 
+The partial correlation defined above admits an equivalent regression-based interpretation. Let $r_i$ and $r_j$ denote the returns of factors $i$ and $j$, and let $r_{-ij}$ denote the vector of all remaining factors excluding $i$ and $j$. Under the conditional distribution implied by $\widehat{\Sigma}_{m+1|m}$, consider the linear equations:
+\begin{equation}
+r_i = \alpha_i + r'_{-ij} \beta_i + \varepsilon_i,
+\end{equation}
+
+\begin{equation}
+r_j = \alpha_j + r'_{-ij} \beta_j + \varepsilon_j.
+\end{equation}
+
+The partial correlation between factors $i$ and $j$, conditional on all other factors, is given by the correlation between the corresponding residuals:
+\begin{equation}
+\rho^{\text{partial}}_{ij,m+1|m}
+=
+\mathrm{Corr}(\varepsilon_i, \varepsilon_j).
+\end{equation}
+This formulation highlights that partial correlations capture the direct relationship between two factors after removing the linear effects of all remaining factors in the system. 
+
+Unlike the standard financial network approach, which uses the absolute value of correlations to capture the strength of connection, we preserve the sign of conditional dependence. This allows us to distinguish between positive dependence, which can be interpreted as spillover risk and potential reduced diversification, and negative dependence, interpreted as potential hedge or diversification. We therefore decompose the adjacency matrix into positive and negative components and allow them to affect portfolio weights asymmetrically. 
+
+The positive correlation network is given by:
+\begin{equation}
+A^{+}_{ij,m+1|m} =
+\begin{cases}
+\rho^{partial}_{ij,m+1|m}, & \text{if } \rho^{partial}_{ij,m+1|m} > \tau \\
+0, & \text{otherwise}
+\end{cases}
+\end{equation}
+and the negative correlation network is given by:
+\begin{equation}
+A^{-}_{ij,m+1|m} =
+\begin{cases}
+-\rho^{partial}_{ij,m+1|m}, & \text{if } \rho^{partial}_{ij,m+1|m} < -\tau \\
+0, & \text{otherwise}
+\end{cases}
+\end{equation}
+where $\tau$ is a threshold parameter estimated through a grid search, $\tau \in [0.1, 0.5]$, used to remove weak estimated links. The threshold mitigates estimation noise and ensures a sparse, economically interpretable network. Furthermore, it is consistent with regularisation practices in high-dimensional covariance estimation.
+
+\subsubsection{Network Centrality Measure}
+Following the dependencies obtained from constructing the adjacency matrix, we measure the importance of each factor within the dependence network via performing EC, taking from the work of \cite{peralta2016network, MisirliScidaVelikov2025}. In doing so, factors that are connected to other highly connected factors are assigned a higher importance. 
+
+Let $EC^{+}_{m}$ denote the vector of centralities in the contagion network, obtained from
+
+\begin{equation}\label{eq:12}
+A_m^{+} EC_m^{+} = \lambda_m^{+} EC_m^{+}
+\end{equation}
+where $\lambda_m^{+}$ is the largest eigenvalue of $A_m^{+}$. 
+
+Similarly, we compute $EC^{-}_{m}$ for the hedging network: 
+\begin{equation}\label{eq:13}
+A_m^{-} EC_m^{-} = \lambda_m^{-} EC_m^{-}
+\end{equation}
+The quantities $EC^{+}_{i,m}$ and $EC^{-}_{i,m}$ therefore measure the systemic importance of factor $i$ in the contagion and hedging networks respectively.
+
+\subsubsection{Spillover Measures}
+While centrality identifies which managed portfolio component occupy influential positions in the network, it does not capture the magnitude of risk transmission between the managed portfolios. In particular, a factor may be highly central but have a limited impact if it is connected to low-volatility neighbours. Therefore, to translate network position into risk propagation, volatility spillover measures are considered. The network of partial correlations derived from the precision matrix is exploited to recover direct conditional linkages. This helps separate direct from indirect relationships and uses the network of direct links between managed portfolios to approximate how risk can spread from one to another.
+The volatility spillovers are measured through the adjacency matrices of the contagion and "potential for hedging" networks, together with the estimated asset volatilities. The positive (contagion) spillover for asset $i$ at time $m$ is defined as
+
+\begin{equation}
+S^{+}_{i,m} =
+EC^{+}_{i,m}
+\sum_{j \neq i} A^{+}_{ij,m} \hat{\sigma}_{j,m}
+\end{equation}
+Similarly, the negative (potential for hedging) spillover is
+
+\begin{equation}
+S^{-}_{i,m} =
+EC^{-}_{i,m}
+\sum_{j \neq i} A^{-}_{ij,m} \hat{\sigma}_{j,m}
+\end{equation}
+where $\hat{\sigma}_{j,m}$ is the estimated volatility of asset $j$. The use of contagion and hedging spillovers provides a direct link between our network structure and portfolio construction. Meaning, managed portfolios generating strong contagion spillovers increase systemic risk, whereas managed portfolios with potential strong hedging spillovers contribute to diversification.
+
+\subsubsection{Network Penalty Function}
+To incorporate spillover effects into an investor's portfolio, a network-based penalty function that directly adjusts weights based on the magnitude of spillovers is implemented. The penalty function reduces the weight of factors with high contagion spillovers and increases the weight of factors that have high hedging spillovers. Furthermore, it explicitly rules out short positions by enforcing strictly positive weights. 
+\begin{equation}
+g_i(S_{i,m})=
+\max\left\{\epsilon,\;1+\lambda^{+}S^{+}_{i,m}-\lambda^{-}S^{-}_{i,m}\right\},
+\qquad \epsilon>0
+\end{equation}
+where $\lambda^{+} > 0$ and $\lambda^{-} > 0$ control the strength of the
+contagion penalty and the hedging reward, respectively, and $\epsilon$ is a small positive constant. $\lambda^{+}$ and $\lambda^{-}$ are both determined via a grid search on the interval (0,1). Crucially, $\epsilon$ enforces the no-short-selling constraint, and its exact value will also be determined by a grid search on (0,1). In the absence of spillovers, ($S^{+}_{i,m} = S^{-}_{i,m} = 0$), the penalty factor equates to 1.
+
+\subsubsection{Network-Adjusted Portfolio Weights}
+Finally, the portfolio weights are constructed to account for individual factor volatility, systemic risks and diversification benefits through contagion and hedging links, and contagion and hedging spillovers. It is determined by scaling the inverse volatility allocation with the network penalty function:
+\begin{equation}
+\tilde{w}_{i,m} =
+\frac{1}{\hat{\sigma}_{i,m} \, g_i(S_{i,m})}
+\end{equation} \\
+where $\hat{\sigma}_{i,m} =\sqrt{\widehat\Sigma_{ii,m+1|m}}$. In line with \cite{moreira2017volatility}, the network-adjusted portfolio is rescaled by a constant $c$ that controls for the overall risk level of the strategy. Let
+\begin{equation}
+\tilde{f}^{NET}_{p,m+1} = \sum_{i=1}^{N} \tilde{w}_{i,m} f_{i,m+1}.
+\end{equation}
+denote the unscaled network-managed portfolio return. The final portfolio return is defined as $f^{NET}_{p,m+1} = c  \tilde{f}^{NET}_{p,m+1}$, where $c$ is chosen such that the in-sample unconditional standard deviation of the managed portfolio matches that, of the benchmark buy-and-hold portfolio where $c = \frac{\mathrm{sd}\!\left(f_{p,m}^{\mathrm{BH}}\right)}
+{\mathrm{sd}\!\left(\tilde{f}_{p,m}^{\mathrm{NET}}\right)}$.
+
+Now, the network adjustment affects the cross-sectional allocation across factors, while 
+$c$ serves as a normalisation parameter to fix the overall risk scale of the strategy.
+
+\subsection{Estimation Procedure}
+We now turn to how this strategy is implemented empirically.
+The network structure based on the correlation matrix is forecasted on a rolling window approach, with an initial estimation period of two years. The resulting portfolio is then rebalanced on a monthly frequency. Additionally, subsample analyses are conducted to distinguish between periods of stability and turbulence.
+
+\subsection{Benchmark Models}
+\label{sec:benchmark_models}
+To assess the performance of the network-based strategy, the following two benchmark models are chosen: \\
+\textbf{Equally weighted Buy-and-Hold strategy}:
+The return of the strategy is defined as:
+\begin{equation}
+r^{BH}_{p,m+1} = \frac{1}{N} \sum_{i=1}^{N} f_{i,m+1}
+\end{equation}
+where $r_{p,m+1}^{BH}$ corresponds to strategy returns at month $m+1$, $f_{i,m+1}$ factor and managed portfolio returns. \\
+\textbf{Standard Volatility-Managed Portfolio}:
+The multi-factor approach from \cite{moreira2017volatility} is chosen as the second benchmark model. This verifies whether the proposed strategy which incorporates network structure can improve on their volatility management strategy.
+The volatility-managed factor return is defined as 
+\begin{equation}
+\label{eq:moreira_MVE}
+f^{MVE, \sigma}_{m+1} = \frac{c}{\hat\sigma^{2}_{m}\left( f_{t+1}^{MVE}\right)}f_{m+1}^{MVE}
+\end{equation}
+where $f_{m+1}^{MVE}$ is the return of multi-factor portfolio in month $m+1$, where $f_{m+1}^{MVE} = b'F_{m+1}$ and $b'$ static factor weights are chosen such that the in-sample Sharpe ratio is maximized. The constant $c$ is a scaling constant, which ensures that the volatility-managed portfolio has the same unconditional standard deviation as the original factor  such that $ \sigma \left (f_{m+1}^{MVE, \sigma} \right) = \sigma \left ( f_{m+1}^{MVE}\right )$. Lastly, $\hat\sigma^{2}_{m}\left( f_{mm+1}^{MVE}\right)$ is constructed from individual factors realized variances as shown in equation \ref{eq:realized_variance_moreria} and factor weights $b'$. 
+
+\subsection{Performance Measures}
+The network-based strategy could be considered useful if it improves the returns without taking disproportionate risk. Therefore, the performance of the network-based strategy will be measured and compared to the benchmark based on the following performance measures: average portfolio return, which captures the economic payoffs of the strategy; portfolio volatilities, which measure the variability of returns and consequently the amount of risk to achieve the returns; and risk-adjusted performance based on Sharpe ratios. This is the most standard risk-adjusted performance criterion and will help us evaluate the portfolio compared to our benchmark portfolios, which are outlined in the Appendix.  Additionally, the following measures are considered:\\
+\textbf{Portfolio Turnover}:
+Portfolio turnover helps to assess implementability. Turnover captures the trading intensity of the strategy and provides an indication of the strategy's results once realistic costs are included. \\
+Measurement of how the portfolio weights change between periods is defined as:
+\begin{equation}
+TO_m =\sum_{i=1}^{N}\left|w_{i,m} - w_{i,m^-}\right|
+\end{equation}
+where $w_{i,m^-}$ is the weight of asset $i$ just before rebalancing and $w_{i,m}$ is the new weight after rebalancing. \\
+In order to assess the feasibility of the strategy, we subtract a cost proportional to turnover. This provides a more realistic estimate of the return an investor could actually keep after rebalancing costs. We consider the returns net of the transaction costs outlined as:
+\begin{equation}
+r^{net}_{p,m} =r_{p,m} - \kappa \, TO_m
+\end{equation}
+where $\kappa $ is a proportional transaction cost parameter chosen to be equal to 10bps as considered in \cite{frazzini2018tradingcosts}.  \\
+\textbf{Maximum Drawdown (MDD)}:
+We assess the MDD to capture a strategy’s worst loss from a previous peak in wealth. We use it as a mean to compare strategies. While volatility measures average variability, MDD focuses on the most severe realised decline an investor would have experienced over the sample. This helps assess whether the network-adjusted strategy improves not only average risk-adjusted returns, but also resilience during periods of market stress, outlined as:
+\begin{equation}
+    MDD = \max_{m \le s} \left( \frac{W_{m}- W_{s}}{W_{m}}\right)
+\end{equation}
+where $W_{m}$ corresponds to peak wealth across the sample, and $W_{s}$ lowest wealth after time $m$ in the sample.
+
+\subsection{Portfolio Performance Hypothesis Testing}
+\textbf{Assessing $\alpha$ of the strategy} \\
+To evaluate whether the proposed network-adjusted strategy delivers statistically significant performance improvements relative to benchmark portfolios, we estimate the following time-series regression, similarly to \cite{moreira2017volatility}:
+\begin{equation}
+f^{NET}_{p,m} =
+\alpha + \beta r^{B}_{p,m} + \varepsilon_m
+\end{equation}
+where $f^{NET}_{p,m}$ denotes the return of the network-adjusted portfolio and $r^{B}_{p,m}$ denotes the return of a benchmark portfolio. The parameter $\alpha$ measures the abnormal return of the strategy relative to the benchmark. The statistical significance of $\alpha$ is evaluated using a standard $t$-test, additionally outlined in Appendix \ref{app:performance_tests_t_test}. \\
+\textbf{Ledoit-Wolf Sharpe Ratio test} \\
+To compare the risk-adjusted performance between the strategies, we can test for the difference in their Sharpe ratios. A widely used test in financial research for such a difference is \cite{jobson1981performance}'s test. However, as argued by \cite{LedoitWolf2008Sharpe}, this test is not valid for time series returns, which display higher kurtosis; therefore, a more robust test is chosen. We rely on the asymptotic distribution because the out-of-sample forecast period is sufficiently large, while avoiding the complexity of the bootstrap method as further outlined in \cite{LedoitWolf2008Sharpe} for limited sample testing. The specification of the test is shown in Appendix \ref{app:performance_tests_Sharpe_ratio}.
+
+\newpage
+%%\nocite{*}
+\bibliographystyle{apalike}
+\bibliography{references}
+
+\newpage
+
+\appendix
+\setcounter{section}{0}
+\setcounter{equation}{0}
+\section{Appendix}
+
+
+\subsection{Factors returns}
+\begin{figure}[H] 
+    \centering
+    \subfigure{\includegraphics[width=\textwidth, height=0.3\textwidth, keepaspectratio]{Appendix/Factors characteristics/Mkt_factor_returns.png} \label{fig:Mkt_returns}}
+    \hfill
+    \subfigure{\includegraphics[width=\textwidth, height=0.3\textwidth, keepaspectratio]{Appendix/Factors characteristics/Mom_factor_returns.png} \label{fig:Mom_returns}}
+    \caption{Market excess and momentum factor returns}
+    \label{fig:Factor_returns}
+\end{figure}
+
+
+
+\subsection{Basic performance measures}
+\textbf{Average Portfolio Return} \\
+Representation of the raw profitability of the strategy. \\
+\begin{equation}
+\bar r_p = \frac{1}{T}\sum_{t=1}^{T} r_{p,t}
+\end{equation}
+\textbf{Portfolio Volatility} \\
+Measurement of risk where two portfolios with the same return are not equally good if one has higher volatility. \\
+\begin{equation}
+\sigma_p =
+\sqrt{
+\frac{1}{T-1}
+\sum_{t=1}^{T}
+(r_{p,t}-\bar r_p)^2
+}
+\end{equation}
+\textbf{Sharpe Ratio} \\
+Standard performance measure in financial research. It is a direct measure of risk-adjusted performance. \\
+\begin{equation}
+SR_p = \frac{\bar r_p}{\sigma_p}
+\end{equation}
+
+
+\subsection{Optimal MVE weights derivation}
+For the \cite{moreira2017volatility} benchmark, the optimal weights $b$ need to be derived such that the in-sample Sharpe Ratio is maximized. Thefore, the following problem is solved:
+
+\begin{equation}
+    \max_{b} = b'\mu \quad s.t.
+\end{equation}
+\begin{equation}
+    b'\Sigma b = c
+\end{equation}
+where $c$ is chosen equal to 1, however any positive constnat can be chosen, as Sharpe Ratio is scale invariant for $b$.
+
+Solving the Lagrangian from the above problem results in the optimal weight:
+\begin{equation}
+    b^{*} = \frac{\Sigma^{-1}\mu}{\sqrt{\mu'\Sigma^{-1}\mu}}
+\end{equation}
+
+
+\subsection{Strategy performance - hypothesis testing}
+\label{app:performance_tests}
+
+\subsubsection{t-test}
+\label{app:performance_tests_t_test}
+\begin{equation}
+t_{\alpha} =
+\frac{\hat{\alpha}}
+{\text{SE}(\hat{\alpha})}
+\end{equation}
+where $\text{SE}(\hat{\alpha})$ denotes the estimated standard error of the intercept. The null hypothesis is given by $H_0 : \alpha = 0$ against the alternative $H_1 : \alpha > 0.$ 
+
+Rejection of the null hypothesis implies that the network-adjusted strategy generates statistically significant abnormal returns relative to the benchmark portfolio. To account for potential heteroscedasticity and autocorrelation in portfolio returns, standard errors are computed using Newey--West heteroscedasticity and autocorrelation consistent estimators. \\
+
+\subsubsection{Ledoit-Wolf Sharpe Ratio test}
+\label{app:performance_tests_Sharpe_ratio}
+
+
+We consider $ SR_{i} = \frac{\bar{r_{i}}}{\sigma_{i}}$ 
+for $i, j \in \{1,2\}$  corresponding to Sharpe Ratio of the strategy, the null hypothesis $H_{0}:\hat{\Delta} = 0 $ and the alternative hypothesis $H_{0}:\hat{\Delta} \neq 0 $. 
+Furthermore, the corresponding p-value is given by:
+
+\begin{equation}
+    \hat p = 2 \Phi\left ( - \frac{|\hat{\Delta}|}{s(\hat{\Delta})}\right)
+\end{equation}
+
+where $\hat{\Delta} = SR_{i}-SR_{j}$, $\Phi(x)$ correspond to standard normal cumulative distribution function and $s(\hat{\Delta})$ correspond to standard error of $\hat{\Delta}$ as outlined \cite{LedoitWolf2008Sharpe}. 
+
+
+
+
+
+
+
 \end{document}
+yadhu lessgo 
+0. empirics
+1. we take factors, model volatilities -> rn we are between garch and moreira muir(this is winning) -> they dont do any forecasts (they scale from previous months realised variance) -> find a way to forecast thing (dont make it too complicated)
+2. ledoit wolf correlation estimation -> we construct adjacency matrix using Kamu's method -> need to find better papers (kamu will do) => so far we are doing splitting of A into positive and negative 
+3. calculate network adjusted portfolio weights st it is inversly proportional rto the volatility and penalty function g(A)
+4. benchmarks
+5. performance measures (incl hypothesis testing -> very imp) 
+
+Alternate forecast
+\noindent We estimate a first-order autoregressive model for each asset $i$:
+\begin{equation}
+    RV_{i,t} = \alpha_i + \beta_i RV_{i,t-1} + \epsilon_{i,t}
+\end{equation}
+The one-month-ahead expected variance, $E_t[RV_{i,t+1}]$, is then:
+\begin{equation}
+    E_t[RV_{i,t+1}] = \alpha_i + \beta_i RV_{i,t}
+\end{equation}
+This forecast serves as the denominator for our weighting rule as per \cite{moreira2017volatility}.
+
+
+
+
+
+
+
+%%%% Notes form the discusssion slides
+
+
+- comment more that we do grid search for tau 
+- some robsutness analaysis with the tau
+- specify better how we estimate the netork  - rolling window - that is a good point imo
+- show specifcic parts of extnesion - for network we exten with a lot of factors but also do network 
+- individual benchamrks for each component of the methodology?
+- 
+
+
+%%%
+- point out specific disturbution of normality for the covariance matrix
+
+
+
+- I think we should make a stornger note on MVE as we discussed, and then it does not seem liek we also add so many factors
+- Adding timeline to pres. really nice to show the time line (but thats my opinion)
+
+-> notes
+
+we want to represent cross section of factors and portfolios 
+-> create the network using correlation
+-> we do DCC (there is a package for dcc-nl)
+-> our RQ is that we combine moreira w networks 
+->adjacency stayes same just add partial corr shld be shown as regression equations 
+-> we do grid search for tau 0.1 to 0.5
+-> centrality measures 
+-> 
+-> spillover
+
+main benchmark we take MVE -> we do b static -> same way as moreiera -> in sample, maximising sharpe ratio
+
+FULL ANALYSIS:
+1. data start from 1971 (please motivate industry portfolios)
+2. RV construction => we use the same as Moreira 
+3. 1st benchmark => we take MVE where b is formed from the maximum sharpe ratio in-sample
+4. multi-factor network from correlation matrix -> DCC-NL (R package available)
+5. stream 1 + stream 2 => to motivate our methodology 
+6. adjacency matrix same => just add grid search for tau (0.1 to 0.5) and partial correlation for eq. (9) needs formulation in terms of regressions 
+7. centrality remains same 
+8. spillover measures (more motivation) - first, explicitly mention methodology by Peralta and then explicitly mention why we diverge (in empirics, can discuss how important A- actually is)
+9. network penalty function (be more explicit about no short selling constraint)
+10. network portfolio weights (remove normalization) and for eq. 20, stay closely to Moreira's notation) (WE NEED TO THINK ABOUT A SCALING CONSTANT C, LIKE IN MOREIRA)
+11. benchmarks. a) random walk BUT NAME IT MOREIRA BENCHMARK & RV from MVE (make explicit that their weights are static and ours is dynamic), c) buy and hold portfolio (equally weighted, make explicit)
+12. performance measures: 1) mean, volatility, Sharpe ratio, 2) measure tail risk: maximum drawdown, 3) portfolio turnover, 4) transaction costs (3 AND 4 ARE ECONOMICALLY REALISTIC PERFORMANCE MEASURES TO ANSWER WHETHER OUR STRATEGY WORKS BETTER FOR INVESTORS IN REAL WORLD) 
+13. hypothesis testing: a) sharpe ratio test by Ledoit Wolfe 2008, b) t-test based on alphas (H0: alpha = 0, H1: alpha = alpha MVE by moreira) 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+%%% Packages to use
+- library(PeerPerformance) -  for Ledoit-Wolf Sharpe Ratio test
+
+economic intuition of risk and returns for why timing is useful, take a paragraph to elaborate similarities, tangencies, differences to diebold and yilmaz, dcc framework, ensure stationarity conditions in a footnote to achknowledge them, front and center model monthly volatilities in multiple approaches, and say we do this approach AND REFERENCE WHY, adjacency matrices, be careful when discussing precision matrix n conditional dependencies which holds only under gaussian distributions,  precision matrix of returns as hedging portfolio (something about 1972 citation), eq 11 and 12 should we expect A- network to be very sparse (be mindful of what to expect there?), threshold on partial correlation coefficient (elements of inverse can be read as differences in hedging portfolio, can write threshold as a R squared? conditional on others, does hedging position offer 5% improvement in linear fit?) for style (have nice intuitions), helpful to introduce spectral decomposition so that estimate we obtain is guaranteed to be positive semidefinite and write as function of eigenvalues and eigenvectors, shrinkage intensity in methodology, make it more clear. 
