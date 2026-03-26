@@ -1172,13 +1172,13 @@ rv_lag_MVE <- MVE_returns_df |>
   group_by(month) |>
   summarise(
     n_of_days = n(),
-    rv = sum((MVE_return-mean(MVE_return))^2) / n_of_days,
+    rv = sum((MVE_return-mean(MVE_return))^2),
     .groups = "drop"
   ) |> mutate(
     rv_lag = lag(rv)
   ) |> select(-rv)
 
-# Scaling the portfolio by its lagged realized variance (REPAIR THAT BC I NEED TO SCALE BY LAG!!!)
+# Scaling the portfolio by its lagged realized variance
 MVE_returns_df <- MVE_returns_df |> left_join(rv_lag_MVE, by = "month")
 MVE_returns_df <- MVE_returns_df |> 
   mutate(
@@ -1216,7 +1216,7 @@ EW_returns_df <- EW_returns_df |> filter(month > end_date_estimation)
 ## This is just for veryfying the performance of the benchmarks
 
 # Calculating the Sharpe Ratios
-sharpe_ratios_benchmarks <- data_frame(
+sharpe_ratios_benchmarks <- tibble(
   Benchmark = c("EW Buy-and-Hold", "MVE"),
   SR = c(round(compute_SR(EW_returns_df$EW_return),4)*sqrt(252), 
          round(compute_SR(MVE_returns_df$MVE_strategy_return),4)*sqrt(252))

@@ -39,3 +39,4 @@ So hopefully, we can get this part done tomorrow, and I can confidently say that
 25/03/2026 - Yadhu (14:00): Tested the DCC-NL, and it works. Would not recommend running it though. Currently takes an hour for the small base case.
 
 26/03/2026 - Kornel (11:30): Added library 'igraph' for graphing networks from the adjecancy matrix
+Kornel (12:30): fixing bugs in benchmark models 
