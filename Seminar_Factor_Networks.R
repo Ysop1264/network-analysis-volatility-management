@@ -1250,6 +1250,12 @@ benchmarks_returns <- EW_returns_df |> left_join(MVE_returns_df, by = "date") |>
 
 
 
+# ================================================
+# Performance evaluation and alpha testing
+# ================================================
+
+
+
 #scale = 12 for monthly data -> annualising the metrics
 # scale = 252 for daily 
 annualized_mean <- function(r, scale = 12) {
