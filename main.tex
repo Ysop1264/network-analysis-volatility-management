@@ -389,23 +389,37 @@ SR_p = \frac{\bar r_p}{\sigma_p}
 \end{equation}
 
 
-\subsection{Optimal MVE weights derivation}
+\subsection{Optimal mean-variance efficient weights derivation}
 \label{app:Optimal_MVE_weights}
 
-For the \cite{moreira2017volatility} benchmark, the optimal weights $b$ need to be derived such that the in-sample Sharpe Ratio is maximized. Thefore, the following problem is solved:
+For the \cite{moreira2017volatility} benchmark, the optimal weights $b$ are derived such that the in-sample Sharpe Ratio is maximized. Formally, the problem is:
+\begin{equation}
+    \max_{b} \quad SR(b)
+\end{equation}
+or equivalently, 
+\begin{equation}
+\label{eq:Sharpe_ratio_expression}
+        \max_{b} \quad \frac{b'\mu}{\sqrt{b'\Sigma b}}
+\end{equation}
+where $b$ corresponds to vector of weights; $\mu$ vector of means and $\Sigma$ variance-covariance matrix of managed portfolios returns. Moreover, it clearly follows from equation \ref{eq:Sharpe_ratio_expression} that Sharpe Ratio is scale invariant, such that it is equal for $b^{*}$ and $cb^{*}$ where $c$ is a multiplication constant and $c \in \mathbb{R^{+}}$.
+Therefore, the problem can be formulated as:
 
 \begin{equation}
-    \max_{b} = b'\mu \quad s.t.
+    \max_{b} \quad b'\mu \quad s.t.
 \end{equation}
 \begin{equation}
     b'\Sigma b = c
 \end{equation}
-where $c$ is chosen equal to 1, however any positive constnat can be chosen, as Sharpe Ratio is scale invariant for $b$.
-
-Solving the Lagrangian from the above problem results in the optimal weight:
+where $c$ is some target unconditional variance. 
+Solving the Lagrangian for the above problem results in the optimal weight:
 \begin{equation}
-    b^{*} = \frac{\Sigma^{-1}\mu}{\sqrt{\mu'\Sigma^{-1}\mu}}
+    b^{*} = \frac{\sqrt{c}\Sigma^{-1}\mu}{\sqrt{\mu'\Sigma^{-1}\mu}}
 \end{equation}
+and 
+\begin{equation}
+    b^{*} \propto \Sigma^{-1}\mu.
+\end{equation}
+
 
 
 \subsection{Strategy performance - hypothesis testing}
