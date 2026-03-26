@@ -37,3 +37,5 @@ So hopefully, we can get this part done tomorrow, and I can confidently say that
 25/03/2026 - Zhang (13:56): Made 3 functions for adjacency matrix construction, eigenvector centrality and spillover measures. Descriptions in functions part. Only thing to do is to check if the estiomated correlation matrix works on the 3 functions but I ran random tests on random matrices and the functions worked in these random tests.
 
 25/03/2026 - Yadhu (14:00): Tested the DCC-NL, and it works. Would not recommend running it though. Currently takes an hour for the small base case.
+
+26/03/2026 - Kornel (11:30): Added library 'igraph' for graphing networks from the adjecancy matrix
