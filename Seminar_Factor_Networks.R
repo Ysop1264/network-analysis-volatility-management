@@ -155,7 +155,7 @@ graph_annualized_returns <- function(returns_df){
   axis <- par(lab = c(20, 8, 5))
   # Plotting the returns 
   plot(main = "", xlab = "Date", ylab = "Annaulized returns",
-       y = returns_df[[2]] * 252 , x = as.Date(returns_df[[1]]) , type = "l" )
+       y = returns_df[[2]] * 252 , x = as.Date(returns_df[[1]]) , type = "l" , ylim = c(-40,40))
   
   # Creates ticks with rounded values of the annualized returns 
   y_ticks <- pretty(returns_df[[2]] * 252)
