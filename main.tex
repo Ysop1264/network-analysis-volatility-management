@@ -301,7 +301,7 @@ The volatility-managed factor return is defined as
 \label{eq:moreira_MVE}
 f^{MVE, \sigma}_{m+1} = \frac{c}{\hat\sigma^{2}_{m}\left( f_{t+1}^{MVE}\right)}f_{m+1}^{MVE}
 \end{equation}
-where $f_{m+1}^{MVE}$ is the return of multi-factor portfolio in month $m+1$, where $f_{m+1}^{MVE} = b'F_{m+1}$ and $b'$ static factor weights are chosen such that the in-sample Sharpe ratio is maximized. The constant $c$ is a scaling constant, which ensures that the volatility-managed portfolio has the same unconditional standard deviation as the original factor  such that $ \sigma \left (f_{m+1}^{MVE, \sigma} \right) = \sigma \left ( f_{m+1}^{MVE}\right )$. Lastly, $\hat\sigma^{2}_{m}\left( f_{mm+1}^{MVE}\right)$ is constructed from individual factors realized variances as shown in equation \ref{eq:realized_variance_moreria} and factor weights $b'$. 
+where $f_{m+1}^{MVE}$ is the return of multi-factor portfolio in month $m+1$, where $f_{m+1}^{MVE} = b'F_{m+1}$; $b'$ static factor weights are chosen such that the in-sample Sharpe ratio is maximized and $F_{m+1}$ are factor returns. The constant $c$ is a scaling constant, which ensures that the volatility-managed portfolio has the same unconditional standard deviation as the original factor  such that $ \sigma \left (f_{m+1}^{MVE, \sigma} \right) = \sigma \left ( f_{m+1}^{MVE}\right )$. Lastly, $\hat\sigma^{2}_{m}\left( f_{mm+1}^{MVE}\right)$ is constructed from individual factors realized variances as shown in equation \ref{eq:realized_variance_moreria} and factor weights $b'$. Furthermore, given that the benchmark is constructed from large number of managed portfolios, a shrinkage estimator of covariance matrix outlined in \cite{ledoit2004well} with $I$ matrix as the target matrix will be used to estimate the in-sample optimal weights as outlined in Appendix \ref{app:Optimal_MVE_weights} for interested readers.
 
 \subsection{Performance Measures}
 The network-based strategy could be considered useful if it improves the returns without taking disproportionate risk. Therefore, the performance of the network-based strategy will be measured and compared to the benchmark based on the following performance measures: average portfolio return, which captures the economic payoffs of the strategy; portfolio volatilities, which measure the variability of returns and consequently the amount of risk to achieve the returns; and risk-adjusted performance based on Sharpe ratios. This is the most standard risk-adjusted performance criterion and will help us evaluate the portfolio compared to our benchmark portfolios, which are outlined in the Appendix.  Additionally, the following measures are considered:\\
@@ -384,6 +384,8 @@ SR_p = \frac{\bar r_p}{\sigma_p}
 
 
 \subsection{Optimal MVE weights derivation}
+\label{app:Optimal_MVE_weights}
+
 For the \cite{moreira2017volatility} benchmark, the optimal weights $b$ need to be derived such that the in-sample Sharpe Ratio is maximized. Thefore, the following problem is solved:
 
 \begin{equation}
