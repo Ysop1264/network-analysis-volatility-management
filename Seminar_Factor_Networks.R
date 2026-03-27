@@ -1269,7 +1269,7 @@ plot(x = cumulative_wealth_df$date, y = cumulative_wealth_df$EW, xlab = "Date", 
 y_ticks <- pretty(cumulative_wealth_df$EW)
 abline(h = y_ticks, col = "grey85", lty = 1)
 lines(x = cumulative_wealth_df$date, y = cumulative_wealth_df$EW, col = "black", lwd = 1)
-#lines(x = cumulative_wealth_df$date, y = cumulative_wealth_df$MVE )
+#lines(x = cumulative_wealth_df$date, y = cumulative_wealth_df$MVE , col = "blue", lty = 2)
 legend("topleft", legend = c("BH", "MVE", "NET"), col = c("black", "blue", "red"), lty = c(1,2, 3), lwd = 2, bty = "n", cex = 0.8)
 
 
