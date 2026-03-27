@@ -1269,11 +1269,29 @@ plot(x = cumulative_wealth_df$date, y = cumulative_wealth_df$EW, xlab = "Date", 
 y_ticks <- pretty(cumulative_wealth_df$EW)
 abline(h = y_ticks, col = "grey85", lty = 1)
 lines(x = cumulative_wealth_df$date, y = cumulative_wealth_df$EW, col = "black", lwd = 1)
-lines(x = cumulative_wealth_df$date, y = cumulative_wealth_df$MVE )
-legend("topleft", legend = c("BH"), col = "black", lty = 1, lwd = 2, bty = "n", cex = 0.8)
+#lines(x = cumulative_wealth_df$date, y = cumulative_wealth_df$MVE )
+legend("topleft", legend = c("BH", "MVE", "NET"), col = c("black", "blue", "red"), lty = c(1,2, 3), lwd = 2, bty = "n", cex = 0.8)
 
 
+# Rolling Sharpe Ratio
+rolling_SR_df <- data.frame(
+  date = benchmarks_returns$date[252:dim(benchmarks_returns)[1]],
+  SR_EW = NA_real_,
+  SR_MVE = NA_real_
+)
 
+for(i in 252: dim(benchmarks_returns)[1]){
+  rolling_SR_df$SR_EW[i-251] <- mean(benchmarks_returns$EW_return[(i-251):i])/sd(benchmarks_returns$EW_return[(i-251):i]) * sqrt(252)
+  rolling_SR_df$SR_MVE[i-251] <- mean(benchmarks_returns$MVE_strategy_return[(i-251):i])/sd(benchmarks_returns$MVE_strategy_return[(i-251):i]) * sqrt(252)
+}
+
+
+plot(x = rolling_SR_df$date, y = rolling_SR_df$SR_EW, type = "l", xlab = "Date", ylab = "Rolling SR", lty = 1, col = "black")
+y_ticks <- pretty( rolling_SR_df$SR_EW)
+abline(h = y_ticks, col = "grey85", lty = 1)
+lines(x = rolling_SR_df$date, y = rolling_SR_df$SR_EW, type = "l", col = "black", lty = 1)
+lines(x = rolling_SR_df$date, y = rolling_SR_df$SR_MVE, col = "blue", lty = 2)
+legend("topright", legend = c("BH", "MVE", "NET"), col = c("black", "blue", "red"), lty = c(1,2, 3), bty = "n", lwd = 2, cex = 0.8)
 
 
 
