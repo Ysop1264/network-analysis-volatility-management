@@ -45,3 +45,4 @@ Kornel (12:30): fixing bugs in benchmark models
 Kornel (14:30): Adding drowdown figure code
 Kornel (17:30): I think I finally repaired the benchmark MVE so that the returns make sense
 Kornel (18:00): Updated the Performance measures: annualized some values and changed to percentages in accordance to the final tables
+Kornel (21:30): Change that the 'target' for optimal MVE weights is that they sum up to one, I will explain in the appendix why in more deteil that it already is

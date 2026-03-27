@@ -85,9 +85,10 @@ print(head(managed_portfolios))
 #' @param mu Vector of means
 #' @param sigma Variance-covariance matrix of returns
 #' @return Solved weights b
-compute_MVE_weights <- function(mu, sigma){
-  b <- solve(sigma, mu)
-  return (b)
+compute_MVE_weights <- function(mu, sigma) {
+  b_raw <- as.vector(solve(sigma, mu))
+  b <- b_raw / sum(b_raw)
+  return(b)
 }
 
 #' Computes the Sharpe Ratio of the returns
