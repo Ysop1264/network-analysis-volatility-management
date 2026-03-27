@@ -1154,7 +1154,7 @@ scaled_network_return <- function(f_net_unscaled, c) {
 # =================================================
 
 # Setting here to test the script for less managed portfolios
-managed_portfolios <- managed_portfolios[,1:7]
+#managed_portfolios <- managed_portfolios[,1:7]
 
 # Defining the estimation sample
 start_date_estimation <- as.Date("1971-01-01")
