@@ -13,7 +13,7 @@
 #install.packages("rugarch")
 #install.packages("xts")
 #install.packages("zoo")
-#install.packages("igraph)
+#install.packages("igraph")
 #####
 
 library(rlang)
@@ -68,7 +68,7 @@ factors_joined <- factors_ff5_daily |> left_join(momentum_daily, by = "date") |>
 
 factors_joined_excess <- factors_joined |> 
   mutate(
-    across(-c(mkt_excess, smb, hml, rmw, cma, risk_free, mom), ~ . - risk_free)
+    across(-c(date, mkt_excess, smb, hml, rmw, cma, risk_free, mom), ~ . - risk_free)
   )
 
 managed_portfolios <- factors_joined_excess |> select(-risk_free)
@@ -86,7 +86,7 @@ print(head(managed_portfolios))
 #' @param sigma Variance-covariance matrix of returns
 #' @return Solved weights b
 compute_MVE_weights <- function(mu, sigma){
-  b <- solve(sigma, mu)/ sqrt(as.numeric(t(mu)%*%solve(sigma)%*%mu))
+  b <- solve(sigma, mu)
   return (b)
 }
 
@@ -1179,11 +1179,6 @@ b <- compute_MVE_weights(mu, sigma)
 vol_mve_in_sample <- sd(as.matrix(managed_portfolios_est[,-1]) %*% b) *sqrt(252)
 b <- b * 0.1 /vol_mve_in_sample
 
-# Resulting in-sample maximized sharpe ratio 
-sp_in_sample <- t(b)%*%mu
-print(paste("In-sample Sharpe Ratio:",  round(sp_in_sample,4)))
-
-
 # The resulting weighted factor before volatility management 
 MVE_returns <- as.matrix(managed_portfolios[,-1]) %*% b
 MVE_returns_df <- tibble(
@@ -1204,11 +1199,16 @@ rv_lag_MVE <- MVE_returns_df |>
     rv_lag = lag(rv)
   ) |> select(-rv)
 
+MVE_returns_df <- MVE_returns_df |> group_by(month) |> 
+  summarise(
+  monthly_return = prod(1 + MVE_return) - 1
+)
+
 # Scaling the portfolio by its lagged realized variance
 MVE_returns_df <- MVE_returns_df |> left_join(rv_lag_MVE, by = "month")
 MVE_returns_df <- MVE_returns_df |> 
   mutate(
-    MVE_scaled = MVE_return / rv_lag
+    MVE_scaled = monthly_return / rv_lag
   )
 MVE_returns_df <- MVE_returns_df |> select(-c("rv_lag", "n_of_days"))
 
@@ -1216,9 +1216,9 @@ MVE_returns_df <- MVE_returns_df |> select(-c("rv_lag", "n_of_days"))
 MVE_returns_df <- MVE_returns_df |> filter(month >= start_date_estimation + months(1))
 
 # Scaling by c
-c = sd(MVE_returns_df$MVE_return)/sd(MVE_returns_df$MVE_scaled)
+c = sd(MVE_returns_df$monthly_return)/sd(MVE_returns_df$MVE_scaled)
 MVE_returns_df$MVE_strategy_return <- MVE_returns_df$MVE_scaled*c
-MVE_returns_df <- MVE_returns_df |> select(-c(MVE_return, MVE_scaled))
+MVE_returns_df <- MVE_returns_df |> select(-c(monthly_return, MVE_scaled))
 
 
 ### Equally weighted buy-and-hold 
@@ -1230,7 +1230,12 @@ EW_returns_df <- tibble(
   date = managed_portfolios$date, 
   month = floor_date(date, "month"),
   EW_return = as.numeric(EW_returns)
-) |> filter(month >= start_date_estimation + months(1))
+) 
+
+EW_returns_df <- EW_returns_df |> group_by(month) |>
+  summarise(
+    monthly_return = prod(1 + EW_return) - 1
+  ) |> filter(month >= start_date_estimation + months(1))
 
 
 # Changing data frames only for out of sample periods
@@ -1244,13 +1249,14 @@ EW_returns_df <- EW_returns_df |> filter(month > end_date_estimation)
 # Calculating the Sharpe Ratios
 sharpe_ratios_benchmarks <- tibble(
   Benchmark = c("EW Buy-and-Hold", "MVE"),
-  SR = c(round(compute_SR(EW_returns_df$EW_return),4)*sqrt(252), 
-         round(compute_SR(MVE_returns_df$MVE_strategy_return),4)*sqrt(252))
+  SR = c(round(compute_SR(EW_returns_df$monthly_return),4)*sqrt(12), 
+         round(compute_SR(MVE_returns_df$MVE_strategy_return),4)*sqrt(12))
 )
 
 
 # Creating data frame for letter regressions
-benchmarks_returns <- EW_returns_df |> left_join(MVE_returns_df, by = "date") |> select(-c(month.x, month.y))
+benchmarks_returns <- EW_returns_df |> left_join(MVE_returns_df, by = "month") 
+colnames(benchmarks_returns) <- c("month", "EW", "MVE")
 
 
 
@@ -1261,32 +1267,33 @@ benchmarks_returns <- EW_returns_df |> left_join(MVE_returns_df, by = "date") |>
 
 
 # Cumulative wealth dataframe
+
 cumulative_wealth_df <- benchmarks_returns |>
-  arrange(date) |>
   mutate(
-    EW = cumprod(1 + EW_return),
-    MVE = cumprod(1 + MVE_strategy_return)
+    EW = cumprod(1 + EW),
+    MVE = cumprod(1 + MVE)
   )
 
 axis <- par(lab = c(20, 8, 5))
-plot(x = cumulative_wealth_df$date, y = cumulative_wealth_df$EW, xlab = "Date", ylab = "Cumulative return", col = "black", lwd = 1, lty = 1)
+plot(x = cumulative_wealth_df$month, y = cumulative_wealth_df$EW, xlab = "Date", 
+     ylab = "Cumulative return", type = "l", col = "black", lwd = 1, lty = 1, ylim = c(0,60))
 y_ticks <- pretty(cumulative_wealth_df$MVE)
 abline(h = y_ticks, col = "grey85", lty = 1)
-lines(x = cumulative_wealth_df$date, y = cumulative_wealth_df$EW, col = "black", lwd = 4)
-lines(x = cumulative_wealth_df$date, y = cumulative_wealth_df$MVE , col = "blue", lty = 2)
+lines(x = cumulative_wealth_df$month, y = cumulative_wealth_df$EW, col = "black", lwd = 1)
+lines(x = cumulative_wealth_df$month, y = cumulative_wealth_df$MVE , col = "blue", lty = 2)
 legend("topleft", legend = c("BH", "MVE", "NET"), col = c("black", "blue", "red"), lty = c(1,2, 3), lwd = 2, bty = "n", cex = 0.8)
 
 
 # Rolling Sharpe Ratio
 rolling_SR_df <- data.frame(
-  date = benchmarks_returns$date[252:dim(benchmarks_returns)[1]],
+  date = benchmarks_returns$month[12:dim(benchmarks_returns)[1]],
   SR_EW = NA_real_,
   SR_MVE = NA_real_
 )
 
-for(i in 252: dim(benchmarks_returns)[1]){
-  rolling_SR_df$SR_EW[i-251] <- mean(benchmarks_returns$EW_return[(i-251):i])/sd(benchmarks_returns$EW_return[(i-251):i]) * sqrt(252)
-  rolling_SR_df$SR_MVE[i-251] <- mean(benchmarks_returns$MVE_strategy_return[(i-251):i])/sd(benchmarks_returns$MVE_strategy_return[(i-251):i]) * sqrt(252)
+for(i in 12: dim(benchmarks_returns)[1]){
+  rolling_SR_df$SR_EW[i-11] <- mean(benchmarks_returns$EW[(i-11):i])/sd(benchmarks_returns$EW[(i-11):i]) * sqrt(12)
+  rolling_SR_df$SR_MVE[i-11] <- mean(benchmarks_returns$MVE[(i-11):i])/sd(benchmarks_returns$MVE[(i-11):i]) * sqrt(12)
 }
 
 
@@ -1297,16 +1304,23 @@ lines(x = rolling_SR_df$date, y = rolling_SR_df$SR_EW, type = "l", col = "black"
 lines(x = rolling_SR_df$date, y = rolling_SR_df$SR_MVE, col = "blue", lty = 2)
 legend("topright", legend = c("BH", "MVE", "NET"), col = c("black", "blue", "red"), lty = c(1,2, 3), bty = "n", lwd = 2, cex = 0.8)
 
+# Drowndown figure
+drawdown_df <- cumulative_wealth_df |>
+  arrange(month) |>
+  mutate(
+    EW_drawdown = EW / cummax(EW) - 1,
+    MVE_drawdown = MVE / cummax(MVE) - 1
+  )
 
-# Plotting the drowdown
 
-plot(x = drawdown_df$date, y = drawdown_df$EW_drawdown, type = "l", ylim = c(-0.6,0), 
+plot(x = drawdown_df$month, y = drawdown_df$EW_drawdown, type = "l", ylim = c(-0.6,0), 
      xlab = "Date", ylab = "Drawdown")
 y_ticks <- pretty(drawdown_df$EW_drawdown)
 abline(h = y_ticks, col = "grey85", lty = 1)
-lines(x = drawdown_df$date, y = drawdown_df$EW_drawdown, type = "l", col = "black", lty = 1)
-lines(x = drawdown_df$date, y = drawdown_df$MVE_drawdown, type = "l", col = "blue", lty = 2)
+lines(x = drawdown_df$month, y = drawdown_df$EW_drawdown, type = "l", col = "black", lty = 1)
+lines(x = drawdown_df$month, y = drawdown_df$MVE_drawdown, type = "l", col = "blue", lty = 2)
 legend("bottomright", legend = c("BH", "MVE", "NET"), col = c("black", "blue", "red"), lty = c(1,2, 3), bty = "n", lwd = 2, cex = 0.8)
+
 
 
 # ================================================
