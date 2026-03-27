@@ -1350,7 +1350,7 @@ max_drawdown <- function(r) {
 }
 
 compute_turnover <- function(weights_df) {
-#this is assuming the first column is a date or something 
+  #this is assuming the first column is a date or something 
   W <- as.matrix(weights_df[,-1])
   turnover <- c(NA, rowSums(abs(W[-1,] - W[-nrow(W),]), na.rm = TRUE))
   return(turnover)
@@ -1359,19 +1359,20 @@ compute_turnover <- function(weights_df) {
 compute_net_returns <- function(r, turnover, cost = 0.001) {
   r - cost * turnover
 }
+
 performance_summary <- function(r, turnover = NULL, scale = 12) {
   data.frame(
-    Mean = annualized_mean(r, scale),
-    Volatility = annualized_vol(r, scale),
-    Sharpe = compute_SR(r, scale),
-    MaxDrawdown = max_drawdown(r),
-    AvgTurnover = ifelse(is.null(turnover), NA, mean(turnover, na.rm = TRUE)),
-    NetMean = ifelse(is.null(turnover), NA, annualized_mean(compute_net_returns(r, turnover), scale)),
-    NetSharpe = ifelse(is.null(turnover), NA, compute_SR(compute_net_returns(r, turnover), scale))
+    Mean = round(annualized_mean(r, scale),4) * 100,
+    Volatility = round(annualized_vol(r, scale),4) * 100,
+    Sharpe = round(compute_SR(r, scale),2),
+    MaxDrawdown = round(max_drawdown(r),4) * 100,
+    AvgTurnover = ifelse(is.null(turnover), NA, round(mean(turnover, na.rm = TRUE),4)),
+    NetMean = ifelse(is.null(turnover), NA, round(annualized_mean(compute_net_returns(r, turnover),4), scale)),
+    NetSharpe = ifelse(is.null(turnover), NA, round(compute_SR(compute_net_returns(r, turnover),4), scale))
   )
 }
-perf_EW <- performance_summary(benchmarks_monthly$EW_return)
-perf_MVE <- performance_summary(benchmarks_monthly$MVE_strategy_return)
+perf_EW <- performance_summary(benchmarks_monthly$EW)
+perf_MVE <- performance_summary(benchmarks_monthly$MVE)
 
 #just to make a nice table with the different strategy
 performance_table <- bind_rows(
@@ -1388,22 +1389,22 @@ alpha_test <- function(strategy_ret, benchmark_ret, lag = 3) {
     x = benchmark_ret
   ) %>%
     drop_na()
-
+  
   fit <- lm(y ~ x, data = df)
   nw_se <- NeweyWest(fit, lag = lag, prewhite = FALSE, adjust = TRUE)
   test <- coeftest(fit, vcov. = nw_se)
-
+  
   data.frame(
-    alpha = test["(Intercept)", "Estimate"],
-    alpha_se = test["(Intercept)", "Std. Error"],
-    alpha_t = test["(Intercept)", "t value"],
-    alpha_p = test["(Intercept)", "Pr(>|t|)"],
-    beta = test["x", "Estimate"]
+    alpha = test["(Intercept)", "Estimate"]* 12,
+    alpha_se = test["(Intercept)", "Std. Error"]* 12 ,
+    alpha_t = test["(Intercept)", "t value"] ,
+    alpha_p = test["(Intercept)", "Pr(>|t|)"] ,
+    beta = test["x", "Estimate"] * 12
   )
 }
 alpha_vs_EW <- alpha_test(
-  strategy_ret = benchmarks_returns$MVE_strategy_return,
-  benchmark_ret = benchmarks_returns$EW_return
+  strategy_ret = benchmarks_returns$MVE,
+  benchmark_ret = benchmarks_returns$EW
 )
 print(alpha_vs_EW)
 
@@ -1411,8 +1412,6 @@ sharpe_difference <- function(r1, r2, scale = 12) {
   compute_SR(r1, scale) - compute_SR(r2, scale)
 }
 sr_diff <- sharpe_difference(
-  benchmarks_monthly$MVE_strategy_return,
-  benchmarks_monthly$EW_return
+  benchmarks_monthly$MVE,
+  benchmarks_monthly$EW
 )
-
-print(sr_diff)

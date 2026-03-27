@@ -44,3 +44,4 @@ Kornel (12:30): fixing bugs in benchmark models
 27/03/2026 - Kornel (13:00): Updated the benchmarks and figures section. I still have somewhere bug with the MVE strategy becuase the cumulative wealth seems very wrong. I think it is because of the scaling optimal weights for some target volatility. Still trying to figure out, but for now I am putting something in the report that I generated for the presentation what should be there.
 Kornel (14:30): Adding drowdown figure code
 Kornel (17:30): I think I finally repaired the benchmark MVE so that the returns make sense
+Kornel (18:00): Updated the Performance measures: annualized some values and changed to percentages in accordance to the final tables
