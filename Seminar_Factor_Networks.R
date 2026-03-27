@@ -68,7 +68,7 @@ factors_joined <- factors_ff5_daily |> left_join(momentum_daily, by = "date") |>
 
 factors_joined_excess <- factors_joined |> 
   mutate(
-    across(-c(mkt_excess, smb, hml, rmw, cma, risk_free), ~ . - risk_free)
+    across(-c(mkt_excess, smb, hml, rmw, cma, risk_free, mom), ~ . - risk_free)
   )
 
 managed_portfolios <- factors_joined_excess |> select(-risk_free)
