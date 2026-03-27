@@ -1175,6 +1175,10 @@ sigma <- as.matrix(linshrink_cov(as.matrix(managed_portfolios_est[,-1])))
 # Calculating the optimal weights 
 b <- compute_MVE_weights(mu, sigma)
 
+#Scaling b for target volatility
+vol_mve_in_sample <- sd(as.matrix(managed_portfolios_est[,-1]) %*% b) *sqrt(252)
+b <- b * 0.1 /vol_mve_in_sample
+
 # Resulting in-sample maximized sharpe ratio 
 sp_in_sample <- t(b)%*%mu
 print(paste("In-sample Sharpe Ratio:",  round(sp_in_sample,4)))
@@ -1265,11 +1269,11 @@ cumulative_wealth_df <- benchmarks_returns |>
   )
 
 axis <- par(lab = c(20, 8, 5))
-plot(x = cumulative_wealth_df$date, y = cumulative_wealth_df$EW, xlab = "Date", ylab = "Cumulative return", col = "black", lwd = 1)
-y_ticks <- pretty(cumulative_wealth_df$EW)
+plot(x = cumulative_wealth_df$date, y = cumulative_wealth_df$EW, xlab = "Date", ylab = "Cumulative return", col = "black", lwd = 1, lty = 1)
+y_ticks <- pretty(cumulative_wealth_df$MVE)
 abline(h = y_ticks, col = "grey85", lty = 1)
-lines(x = cumulative_wealth_df$date, y = cumulative_wealth_df$EW, col = "black", lwd = 1)
-#lines(x = cumulative_wealth_df$date, y = cumulative_wealth_df$MVE , col = "blue", lty = 2)
+lines(x = cumulative_wealth_df$date, y = cumulative_wealth_df$EW, col = "black", lwd = 4)
+lines(x = cumulative_wealth_df$date, y = cumulative_wealth_df$MVE , col = "blue", lty = 2)
 legend("topleft", legend = c("BH", "MVE", "NET"), col = c("black", "blue", "red"), lty = c(1,2, 3), lwd = 2, bty = "n", cex = 0.8)
 
 
@@ -1292,7 +1296,6 @@ abline(h = y_ticks, col = "grey85", lty = 1)
 lines(x = rolling_SR_df$date, y = rolling_SR_df$SR_EW, type = "l", col = "black", lty = 1)
 lines(x = rolling_SR_df$date, y = rolling_SR_df$SR_MVE, col = "blue", lty = 2)
 legend("topright", legend = c("BH", "MVE", "NET"), col = c("black", "blue", "red"), lty = c(1,2, 3), bty = "n", lwd = 2, cex = 0.8)
-
 
 
 
