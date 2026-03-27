@@ -1298,6 +1298,16 @@ lines(x = rolling_SR_df$date, y = rolling_SR_df$SR_MVE, col = "blue", lty = 2)
 legend("topright", legend = c("BH", "MVE", "NET"), col = c("black", "blue", "red"), lty = c(1,2, 3), bty = "n", lwd = 2, cex = 0.8)
 
 
+# Plotting the drowdown
+
+plot(x = drawdown_df$date, y = drawdown_df$EW_drawdown, type = "l", ylim = c(-0.6,0), 
+     xlab = "Date", ylab = "Drawdown")
+y_ticks <- pretty(drawdown_df$EW_drawdown)
+abline(h = y_ticks, col = "grey85", lty = 1)
+lines(x = drawdown_df$date, y = drawdown_df$EW_drawdown, type = "l", col = "black", lty = 1)
+lines(x = drawdown_df$date, y = drawdown_df$MVE_drawdown, type = "l", col = "blue", lty = 2)
+legend("bottomright", legend = c("BH", "MVE", "NET"), col = c("black", "blue", "red"), lty = c(1,2, 3), bty = "n", lwd = 2, cex = 0.8)
+
 
 # ================================================
 # Performance evaluation and alpha testing
