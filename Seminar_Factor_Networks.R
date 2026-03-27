@@ -1250,6 +1250,34 @@ benchmarks_returns <- EW_returns_df |> left_join(MVE_returns_df, by = "date") |>
 
 
 
+
+# ====================================
+# Generating figures 
+# ====================================
+
+
+# Cumulative wealth dataframe
+cumulative_wealth_df <- benchmarks_returns |>
+  arrange(date) |>
+  mutate(
+    EW = cumprod(1 + EW_return),
+    MVE = cumprod(1 + MVE_strategy_return)
+  )
+
+axis <- par(lab = c(20, 8, 5))
+plot(x = cumulative_wealth_df$date, y = cumulative_wealth_df$EW, xlab = "Date", ylab = "Cumulative return", col = "black", lwd = 1)
+y_ticks <- pretty(cumulative_wealth_df$EW)
+abline(h = y_ticks, col = "grey85", lty = 1)
+lines(x = cumulative_wealth_df$date, y = cumulative_wealth_df$EW, col = "black", lwd = 1)
+lines(x = cumulative_wealth_df$date, y = cumulative_wealth_df$MVE )
+legend("topleft", legend = c("BH"), col = "black", lty = 1, lwd = 2, bty = "n", cex = 0.8)
+
+
+
+
+
+
+
 # ================================================
 # Performance evaluation and alpha testing
 # ================================================
