@@ -1416,3 +1416,11 @@ sr_diff <- sharpe_difference(
   benchmarks_monthly$MVE,
   benchmarks_monthly$EW
 )
+
+print(sr_diff)
+
+
+
+# ========================================
+# Table creation
+# ========================================
