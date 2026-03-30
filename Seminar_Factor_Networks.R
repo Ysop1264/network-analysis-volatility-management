@@ -193,13 +193,13 @@ print(tail(rv_monthly))
 fit_garch_expanding_monthly <- function(
   ret,
   dates = NULL,
-  init_window = 504,          # ~2 trading years
+  init_window = 504,
   garch_order = c(1, 1),
   arma_order = c(0, 0),
   distribution = "norm",
-  scale_ret = TRUE
+  scale_ret = TRUE,
+  series_name = NA_character_
 ) {
-  # Basic input handling
   ret <- as.numeric(ret)
   dates <- as.Date(dates)
 
@@ -221,7 +221,6 @@ fit_garch_expanding_monthly <- function(
     stop("Series shorter than initial window.")
   }
 
-  # GARCH specification
   spec <- ugarchspec(
     variance.model = list(
       model = "sGARCH",
@@ -234,9 +233,7 @@ fit_garch_expanding_monthly <- function(
     distribution.model = distribution
   )
 
-  # Safe wrappers
-  # Added because of initial convergence issues
-  safe_fit <- function(x) {
+  safe_fit <- function(x, series_name = NA, refit_date = NA) {
     tryCatch(
       suppressWarnings(
         ugarchfit(
@@ -246,55 +243,51 @@ fit_garch_expanding_monthly <- function(
           solver.control = list(trace = 0)
         )
       ),
-      error = function(e) NULL
+      error = function(e) {
+        message("FIT FAILED | series=", series_name,
+                " | refit_date=", refit_date,
+                " | msg=", conditionMessage(e))
+        NULL
+      }
     )
   }
 
-  safe_forecast <- function(fit, n_ahead) {
+  safe_forecast <- function(fit, n_ahead, series_name = NA, refit_date = NA) {
     tryCatch(
       ugarchforecast(fit, n.ahead = n_ahead),
-      error = function(e) NULL
+      error = function(e) {
+        message("FORECAST FAILED | series=", series_name,
+                " | refit_date=", refit_date,
+                " | msg=", conditionMessage(e))
+        NULL
+      }
     )
   }
 
-  # Find monthly refit dates
-  # Use last available trading day of each month
-  # After init_window
   idx_all <- seq_len(n)
   month_id <- format(dates, "%Y-%m")
 
-  # last observation index in each month
   month_end_idx <- tapply(idx_all, month_id, max)
   month_end_idx <- as.integer(month_end_idx)
 
-  # only refit when we have enough history
-  # and only if there is at least one next-day forecast to make
   refit_idx <- month_end_idx[month_end_idx >= init_window & month_end_idx < n]
 
   if (length(refit_idx) == 0) {
     stop("No eligible monthly refit dates found after init_window.")
   }
 
-  # Prepare output container
-  # Forecasts are for dates (init_window + 1):n
   out_list <- vector("list", n - init_window)
   out_pos <- 1
 
-  # Loop over monthly refit dates
   for (k in seq_along(refit_idx)) {
     t_refit <- refit_idx[k]
-
     insample_ret <- ret[1:t_refit]
 
-    # Determine how many future days this fit should cover
     next_refit <- if (k < length(refit_idx)) refit_idx[k + 1] else n
-
-    # Forecast for days (t_refit + 1) up to next_refit
     forecast_idx <- (t_refit + 1):next_refit
 
     if (length(forecast_idx) == 0) next
 
-    # Skip degenerate window
     if (sd(insample_ret, na.rm = TRUE) <= 1e-8) {
       for (j in forecast_idx) {
         out_list[[out_pos]] <- data.frame(
@@ -311,7 +304,7 @@ fit_garch_expanding_monthly <- function(
       next
     }
 
-    fit <- safe_fit(insample_ret)
+    fit <- safe_fit(insample_ret, series_name, dates[t_refit])
 
     if (is.null(fit)) {
       for (j in forecast_idx) {
@@ -329,7 +322,12 @@ fit_garch_expanding_monthly <- function(
       next
     }
 
-    fc <- safe_forecast(fit, n_ahead = length(forecast_idx))
+    fc <- safe_forecast(fit, length(forecast_idx), series_name, dates[t_refit])
+
+    if (!is.null(fit)) {
+      message("PARAM NAMES | series=", series_name, " | ",
+              paste(names(coef(fit)), collapse = ", "))
+    }
 
     if (is.null(fc)) {
       for (j in forecast_idx) {
@@ -377,8 +375,6 @@ fit_garch_expanding_monthly <- function(
   }
 
   out <- do.call(rbind, out_list)
-
-  # sort and return
   out <- out[order(out$date), ]
   rownames(out) <- NULL
   out
@@ -392,7 +388,9 @@ run_all_garch_monthly <- function(data, date_col = "date", init_window = 504) {
     fit_garch_expanding_monthly(
       ret = data[[nm]],
       dates = dates,
-      init_window = init_window
+      init_window = init_window,
+      series_name = nm,
+      distribution = "std"
     )
   })
 
@@ -402,6 +400,20 @@ run_all_garch_monthly <- function(data, date_col = "date", init_window = 504) {
 
 # Too long to run what is below, so will run test case first
 # garch_results <- run_all_garch_daily(managed_portfolios)
+
+system.time({
+  test_result <- fit_garch_expanding_monthly(
+    ret = managed_portfolios[[2]][1:1100],
+    dates = managed_portfolios$date[1:1100],
+    init_window = 504,
+    series_name = names(managed_portfolios)[2]
+  )
+})
+
+sum(is.na(test_result$sigma))
+nrow(test_result)
+head(test_result)
+tail(test_result)
 
 system.time({
   test_result <- fit_garch_expanding_monthly(
@@ -419,11 +431,36 @@ system.time({
   )
 })
 
-# Checking if there are any nas  and if no of forecasts is 596
-sapply(garch_results_test, function(x) sum(is.na(x$sigma)))
-sapply(garch_results_test, nrow)
+na_summary <- sapply(garch_results_test, function(x) sum(is.na(x$sigma)))
+sort(na_summary[na_summary > 0], decreasing = TRUE)
 
-# Constructing standardised residual matrix Z and Diagonal volatility matrix D, calculated
+table(sapply(garch_results_test, nrow))
+
+z_summary <- sapply(garch_results_test, function(x) sd(x$z, na.rm = TRUE))
+summary(z_summary)
+
+# sGARCH is underestimating volatility (has fat tails , sd of 1.18, 
+# using Studnet t-distribution for a run)
+system.time({
+  garch_results_test_t <- run_all_garch_monthly(
+    managed_portfolios[1:1100, ],
+    date_col = "date",
+    init_window = 504
+  )
+})
+
+na_summary_t <- sapply(garch_results_test_t, function(x) sum(is.na(x$sigma)))
+sort(na_summary_t[na_summary_t > 0], decreasing = TRUE)
+
+z_summary_t <- sapply(garch_results_test_t, function(x) sd(x$z, na.rm = TRUE))
+summary(z_summary_t)
+
+table(sapply(garch_results_test_t, nrow))
+
+mean_z <- sapply(garch_results_test_t, function(x) mean(x$z, na.rm = TRUE))
+summary(mean_z)
+
+# Constructing standardised residual matrix Z, calculated
 # in GARCH functions already
 build_garch_blocks <- function(garch_results_list) {
   # Extracting reference dates from the first factors
@@ -436,10 +473,10 @@ build_garch_blocks <- function(garch_results_list) {
   }
   
   # Loop over each factor, extract standardised residuals, then put in a matrix
-  Z <- sapply(garch_results_list, function(x) x$z)
-  SIGMA <- sapply(garch_results_list, function(x) x$sigma)
-  MU <- sapply(garch_results_list, function(x) x$mu)
-  RESID <- sapply(garch_results_list, function(x) x$resid)
+  Z <- do.call(cbind, lapply(garch_results_list, `[[`, "z"))
+  SIGMA <- do.call(cbind, lapply(garch_results_list, `[[`, "sigma"))
+  MU <- do.call(cbind, lapply(garch_results_list, `[[`, "mu"))
+  RESID <- do.call(cbind, lapply(garch_results_list, `[[`, "resid"))
   
   Z <- as.matrix(Z)
   SIGMA <- as.matrix(SIGMA)
@@ -467,7 +504,7 @@ build_garch_blocks <- function(garch_results_list) {
   )
 }
 
-garch_blocks <- build_garch_blocks(garch_results_test)
+garch_blocks <- build_garch_blocks(garch_results_test_t)
 
 Z_block <- garch_blocks$Z
 SIGMA_block <- garch_blocks$SIGMA
