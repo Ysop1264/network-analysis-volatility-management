@@ -504,58 +504,9 @@ build_garch_blocks <- function(garch_results_list) {
   )
 }
 
-garch_blocks <- build_garch_blocks(garch_results_test_t)
-
-Z_block <- garch_blocks$Z
-SIGMA_block <- garch_blocks$SIGMA
-MU_block <- garch_blocks$MU
-RESID_block <- garch_blocks$RESID
-dates_block <- garch_blocks$dates
-
-# Dimension check
-dim(Z_block)
-dim(SIGMA_block)
-dim(MU_block)
-dim(RESID_block)
-
-identical(dim(Z_block), dim(SIGMA_block))
-identical(dim(Z_block), dim(MU_block))
-identical(dim(Z_block), dim(RESID_block))
-
-head(rownames(Z_block))
-head(rownames(SIGMA_block))
-head(colnames(Z_block))
-
-# Missing value check
-sum(is.na(Z_block))
-sum(is.na(SIGMA_block))
-sum(is.na(MU_block))
-sum(is.na(RESID_block))
-
-sum(!is.finite(Z_block))
-sum(!is.finite(SIGMA_block))
-sum(!is.finite(MU_block))
-sum(!is.finite(RESID_block))
-
-# Sigma positivity check
-summary(as.vector(SIGMA_block))
-sum(SIGMA_block <= 0)
-
-# Identitiy check
-max(abs(Z_block - (RESID_block / SIGMA_block)), na.rm = TRUE)
-
-# Standardization checks (check if mean and sd are approx 0 and 1)
-print(mean(as.vector(Z_block), na.rm = TRUE))
-print(sd(as.vector(Z_block), na.rm = TRUE))
-print(summary(colMeans(Z_block, na.rm = TRUE)))
-print(summary(apply(Z_block, 2, sd, na.rm = TRUE)))
-
-# Extreme values
-print(max(abs(Z_block), na.rm = TRUE))
-print(quantile(abs(Z_block), probs = c(0.90, 0.95, 0.99, 0.999), na.rm = TRUE))
-
 # Keeping track of current month and the forecasting month
-make_month_index <- function(dates, min_obs = 252) {
+# Minimum estimation window of 1 trading year, or else DCC becomes too unstable
+make_month_index <- function(dates, min_obs = 252, rolling_window = NULL) {
   dates <- as.Date(dates)
   n <- length(dates)
 
@@ -563,10 +514,12 @@ make_month_index <- function(dates, min_obs = 252) {
 
   month_id <- format(dates, "%Y-%m")
 
+  # Finding the last trading day of each month
   month_end_idx <- tapply(seq_len(n), month_id, max)
   refit_months <- names(month_end_idx)
   month_end_idx <- as.integer(month_end_idx)
 
+  # the final month has no following month to forecast
   out <- vector("list", length(month_end_idx) - 1)
   out_pos <- 1
 
@@ -574,7 +527,13 @@ make_month_index <- function(dates, min_obs = 252) {
     t_end <- month_end_idx[k]
     next_end <- month_end_idx[k + 1]
 
-    insample_idx <- seq_len(t_end)
+    if (is.null(rolling_window)) {
+      insample_idx <- seq_len(t_end)
+    } else {
+      start_idx <- max(1, t_end - rolling_window + 1)
+      insample_idx <- start_idx:t_end
+    }
+
     forecast_idx <- (t_end + 1):next_end
 
     if (length(insample_idx) < min_obs) next
@@ -691,8 +650,9 @@ dcc_filter <- function(Z, a, b, S) {
 
     # DCC Recursion (tcrossprod is tranpose product)
     Q_t <- (1 - a - b) * S + a * tcrossprod(zlag) + b * Q_prev
-    # Enforce symmetry 
+    # Enforce symmetry to make it diagonalisable
     Q_t <- (Q_t + t(Q_t)) / 2
+    # Convert covariance object to correlation matrix
     R_t <- normalize_Q_to_R(Q_t)
 
     Q_list[[t]] <- Q_t
@@ -703,10 +663,13 @@ dcc_filter <- function(Z, a, b, S) {
   list(Q = Q_list, R = R_list, Q_T = Q_prev)
 }
 
+# Function computes the Gaussian Negative Likelihood for the DCC Model
+# for given parameters (a, b)
 dcc_negloglik <- function(par, Z, S, penalty = 1e12, ridge = 1e-8) {
   a <- par[1]
   b <- par[2]
 
+  # Constraint check to ensure feasibility
   if (!is.finite(a) || !is.finite(b) || a < 0 || b < 0 || (a + b) >= 0.999) {
     return(penalty)
   }
@@ -736,8 +699,10 @@ dcc_negloglik <- function(par, Z, S, penalty = 1e12, ridge = 1e-8) {
     Rt <- (Rt + t(Rt)) / 2
     diag(Rt) <- 1
 
+    # Ridge regularisation to avoid near singular correlation matrices
     Rt_reg <- Rt + diag(ridge, N)
 
+    # Cholesky Decomposition for faster output
     U <- tryCatch(chol(Rt_reg), error = function(e) NULL)
     if (is.null(U)) {
       return(penalty)
@@ -753,6 +718,7 @@ dcc_negloglik <- function(par, Z, S, penalty = 1e12, ridge = 1e-8) {
       return(penalty)
     }
 
+    # backsolve solves the triangular factor in the Cholesky without forming the inverse directly
     y <- tryCatch(backsolve(U, zt, transpose = TRUE), error = function(e) NULL)
     if (is.null(y) || any(!is.finite(y))) {
       return(penalty)
@@ -775,15 +741,18 @@ dcc_negloglik <- function(par, Z, S, penalty = 1e12, ridge = 1e-8) {
   0.5 * ll
 }
 
-estimate_dcc <- function(Z_insample, S_target = NULL, start_par = c(0.03, 0.95),
+# Wrapper function that does the DCC estimation
+estimate_dcc <- function(Z_insample, S_target = NULL, start_par = c(0.03, 0.95), # typical small a, large b
                          ridge = 1e-8, stationarity_eps = 1e-4) {
   Z_insample <- as.matrix(Z_insample)
+  # Missing values distort recursion and the likelihood
   Z_use <- Z_insample[complete.cases(Z_insample), , drop = FALSE]
 
   if (nrow(Z_use) < 50) {
     stop("Too few complete observations to estimate DCC.")
   }
 
+  # Falls back to robust correlation target if no shrinkage target is supplied
   if (is.null(S_target)) {
     S_target <- safe_cor(Z_use)
   } else {
@@ -804,16 +773,24 @@ estimate_dcc <- function(Z_insample, S_target = NULL, start_par = c(0.03, 0.95),
     start_b <- start_b * scale_factor
   }
 
-  opt <- optim(
-    par = c(start_a, start_b),
-    fn = function(par) dcc_negloglik(par, Z_use, S_target, ridge = ridge),
-    method = "L-BFGS-B",
-    lower = c(1e-6, 1e-6),
-    upper = c(0.5, 0.999)
+  # Uses box constraints to keep parameters positive and from wandering too far
+  opt <- tryCatch(
+    optim(
+      par = c(start_a, start_b),
+      fn = function(par) dcc_negloglik(par, Z_use, S_target, ridge = ridge),
+      method = "L-BFGS-B",
+      lower = c(1e-6, 1e-6),
+      upper = c(0.5, 0.999)
+    ),
+    error = function(e) NULL
   )
 
-  if (!is.list(opt) || is.null(opt$convergence) || opt$convergence != 0 ||
-      is.null(opt$value) || !is.finite(opt$value)) {
+  if (is.null(opt) ||
+      !is.list(opt) ||
+      is.null(opt$convergence) ||
+      opt$convergence != 0 ||
+      is.null(opt$value) ||
+      !is.finite(opt$value)) {
     stop("DCC optimization failed to converge.")
   }
 
@@ -826,7 +803,7 @@ estimate_dcc <- function(Z_insample, S_target = NULL, start_par = c(0.03, 0.95),
     b_hat <- b_hat * scale_factor
   }
 
-  # Only run full filter once, after optimization
+  # To obtain full in-sample Q_t, full in-sample R_t, and terminal Q_T
   filt <- dcc_filter(Z_use, a_hat, b_hat, S_target)
 
   list(
@@ -927,6 +904,26 @@ aggregate_monthly_cov <- function(H_list) {
   Reduce(`+`, valid)
 }
 
+# Grouping helpers (we finally decided on biyearly)
+quarter_id <- function(x) {
+  x <- as.Date(x)
+  yr <- format(x, "%Y")
+  qtr <- ((as.integer(format(x, "%m")) - 1) %/% 3) + 1
+  paste0(yr, "-Q", qtr)
+}
+
+year_id <- function(x) {
+  x <- as.Date(x)
+  format(x, "%Y")
+}
+
+biyear_id <- function(x) {
+  x <- as.Date(x)
+  yr <- as.integer(format(x, "%Y"))
+  start_yr <- ifelse(yr %% 2 == 0, yr - 1, yr)
+  paste0(start_yr, "-", start_yr + 1)
+}
+
 # Master function
 # loops over month-end refit dates and does the full monthly DCC forecasting exercise
 # estimate DCC on expanding in-sample data
@@ -934,11 +931,15 @@ aggregate_monthly_cov <- function(H_list) {
 # combine with next-month daily volatility forecasts
 # aggregate into monthly covariance forecasts
 run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
-                            min_corr_window = 252, S_builder = NULL,
+                            min_corr_window = 252,
+                            rolling_window = 504,
+                            S_builder = NULL,
+                            S_update_freq = c("monthly", "quarterly", "yearly", "biyearly"),
                             trace = TRUE) {
   Z_block <- as.matrix(Z_block)
   SIGMA_block <- as.matrix(SIGMA_block)
   dates_block <- as.Date(dates_block)
+  S_update_freq <- match.arg(S_update_freq)
 
   if (!identical(dim(Z_block), dim(SIGMA_block))) {
     stop("Z_block and SIGMA_block must have identical dimensions.")
@@ -948,8 +949,11 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
     stop("dates_block length must equal nrow(Z_block).")
   }
 
-  # monthly expanding-window forecasting schedule
-  month_map <- make_month_index(dates_block, min_obs = min_corr_window)
+  month_map <- make_month_index(
+    dates = dates_block,
+    min_obs = min_corr_window,
+    rolling_window = rolling_window
+  )
 
   if (length(month_map) == 0) {
     stop("No eligible monthly DCC forecasting blocks found.")
@@ -957,10 +961,12 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
 
   out <- vector("list", length(month_map))
 
+  last_S_target <- NULL
+  last_S_period <- NULL
+
   for (i in seq_along(month_map)) {
     blk <- month_map[[i]]
-    
-    # Diagnostic measure since DCC fitting can take time
+
     if (trace) {
       message(
         "Estimating DCC for refit date ",
@@ -972,17 +978,35 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
       )
     }
 
-    Z_insample <- Z_block[blk$insample_idx, , drop = FALSE] # DCC estimation sample
-    SIGMA_future <- SIGMA_block[blk$forecast_idx, , drop = FALSE] # next-month daily volatility
-
-    # Hook for nonlinear shrinkage later
-    # Long run target S
-    S_target <- if (is.null(S_builder)) {
-      safe_cor(Z_insample)
-    } else {
-      S_builder(Z_insample)
-    }
     Z_insample <- Z_block[blk$insample_idx, , drop = FALSE]
+    SIGMA_future <- SIGMA_block[blk$forecast_idx, , drop = FALSE]
+
+    current_S_period <- switch(
+      S_update_freq,
+      monthly   = format(blk$refit_date, "%Y-%m"),
+      quarterly = quarter_id(blk$refit_date),
+      yearly    = year_id(blk$refit_date),
+      biyearly  = biyear_id(blk$refit_date)
+    )
+
+    reused_S <- FALSE
+
+    if (is.null(S_builder)) {
+      S_target <- safe_cor(Z_insample)
+      } else {
+    if (is.null(last_S_target) || !identical(current_S_period, last_S_period)) {
+    if (trace) {
+      message("Updating S_target via ", S_update_freq,
+              " NL shrinkage at ", as.character(blk$refit_date))
+    }
+    S_target <- S_builder(Z_insample)
+    last_S_target <- S_target
+    last_S_period <- current_S_period
+  } else {
+    S_target <- last_S_target
+    reused_S <- TRUE
+  }
+}
 
     cat("\n============================\n")
     cat("Refit date:", as.character(blk$refit_date), "\n")
@@ -993,24 +1017,25 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
     z_sds <- apply(Z_insample, 2, sd, na.rm = TRUE)
     cat("Min column sd:", min(z_sds, na.rm = TRUE), "\n")
     cat("Any zero/NA column sd:",
-      any(!is.finite(z_sds) | z_sds < 1e-8), "\n")
+        any(!is.finite(z_sds) | z_sds < 1e-8), "\n")
 
-    S_dbg <- cor(Z_insample, use = "pairwise.complete.obs")
+    cat("S update period:", current_S_period, "\n")
+    cat("Reused previous S_target:", reused_S, "\n")
+
+    S_dbg <- S_target
     cat("Any non-finite in S:", any(!is.finite(S_dbg)), "\n")
     cat("Symmetry check:", max(abs(S_dbg - t(S_dbg))), "\n")
     cat("Min eigenvalue of S:",
-      min(eigen(S_dbg, symmetric = TRUE, only.values = TRUE)$values), "\n")
+        min(eigen(S_dbg, symmetric = TRUE, only.values = TRUE)$values), "\n")
     cat("============================\n")
 
-    # Estimate DCC model on in-sample block, if it fails just retunr  null instead
-    # of crashing everything
     dcc_fit <- tryCatch(
-    estimate_dcc(Z_insample, S_target),
-     error = function(e) {
-      cat("DCC failed at", as.character(blk$refit_date), ":", e$message, "\n")
-      return(NULL)
-    }
-  )
+      estimate_dcc(Z_insample, S_target),
+      error = function(e) {
+        cat("DCC failed at", as.character(blk$refit_date), ":", e$message, "\n")
+        return(NULL)
+      }
+    )
 
     if (is.null(dcc_fit)) {
       out[[i]] <- list(
@@ -1026,7 +1051,6 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
       next
     }
 
-    # forecast the full sequence of next-month daily conditional correlations
     dcc_fc <- forecast_dcc_correlations(
       Q_T = dcc_fit$Q_T,
       S = dcc_fit$S,
@@ -1041,16 +1065,15 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
       dates_future = blk$forecast_dates
     )
 
-    # Main aggregated matrix used for precision matrix construction later
     H_month <- aggregate_monthly_cov(H_fc)
 
-    # Stores everything from that monthly estimation/forecast cycle
     out[[i]] <- list(
       refit_month = blk$refit_month,
       refit_date = blk$refit_date,
       insample_idx = blk$insample_idx,
       forecast_idx = blk$forecast_idx,
       forecast_dates = blk$forecast_dates,
+      S_period = current_S_period,
       a = dcc_fit$a,
       b = dcc_fit$b,
       S = dcc_fit$S,
@@ -1067,77 +1090,250 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
 }
 
 # Subset test for time check
-test_data <- managed_portfolios[1:800, c("date", names(managed_portfolios)[2:9])]
+test_data_cmp <- managed_portfolios[1:1100, c("date", names(managed_portfolios)[2:9])]
 
-# GARCH stage
-time_garch <- system.time({
-  garch_test <- run_all_garch_monthly(
-    test_data,
+time_garch_cmp <- system.time({
+  garch_cmp <- run_all_garch_monthly(
+    test_data_cmp,
     date_col = "date",
     init_window = 504
   )
 })
 
-print(time_garch)
+print(time_garch_cmp)
 
-# Block construction
-time_blocks <- system.time({
-  blocks_test <- build_garch_blocks(garch_test)
+time_blocks_cmp <- system.time({
+  blocks_cmp <- build_garch_blocks(garch_cmp)
 })
 
-print(time_blocks)
+print(time_blocks_cmp)
 
-rm(dcc_test)
-
-# DCC stage (standard first)
-time_dcc <- system.time({
-  dcc_test <- run_dcc_monthly(
-    Z_block = blocks_test$Z,
-    SIGMA_block = blocks_test$SIGMA,
-    dates_block = as.Date(rownames(blocks_test$Z)),
+time_dcc_quarterly <- system.time({
+  dcc_quarterly <- run_dcc_monthly(
+    Z_block = blocks_cmp$Z,
+    SIGMA_block = blocks_cmp$SIGMA,
+    dates_block = as.Date(rownames(blocks_cmp$Z)),
     min_corr_window = 252,
-    S_builder = NULL,   # start WITHOUT shrinkage
+    rolling_window = 504,
+    S_builder = build_nlshrink_target,
+    S_update_freq = "quarterly",
     trace = TRUE
   )
 })
 
-print(time_dcc)
+print(time_dcc_quarterly)
 
-length(dcc_test)
-names(dcc_test)[1:3]
-str(dcc_test[[1]], max.level = 1)
-dcc_test[[1]]$a
-dcc_test[[1]]$b
-dcc_test[[1]]$a + dcc_test[[1]]$b
-dim(dcc_test[[1]]$H_month)
-length(dcc_test[[1]]$R_forecasts)
-length(dcc_test[[1]]$forecast_dates)
+time_dcc_yearly <- system.time({
+  dcc_yearly <- run_dcc_monthly(
+    Z_block = blocks_cmp$Z,
+    SIGMA_block = blocks_cmp$SIGMA,
+    dates_block = as.Date(rownames(blocks_cmp$Z)),
+    min_corr_window = 252,
+    rolling_window = 504,
+    S_builder = build_nlshrink_target,
+    S_update_freq = "yearly",
+    trace = TRUE
+  )
+})
 
-dcc_test[[1]]$H_month[1:5, 1:5]
-dcc_test[[1]]$R_forecasts[[1]][1:5, 1:5]
+print(time_dcc_yearly)
+
+time_dcc_biyearly <- system.time({
+  dcc_biyearly <- run_dcc_monthly(
+    Z_block = blocks_cmp$Z,
+    SIGMA_block = blocks_cmp$SIGMA,
+    dates_block = as.Date(rownames(blocks_cmp$Z)),
+    min_corr_window = 252,
+    rolling_window = 504,
+    S_builder = build_nlshrink_target,
+    S_update_freq = "biyearly",
+    trace = TRUE
+  )
+})
+
+print(time_dcc_biyearly)
+
+time_dcc_biyearly <- system.time({
+  dcc_biyearly <- run_dcc_monthly(
+    Z_block = blocks_cmp$Z,
+    SIGMA_block = blocks_cmp$SIGMA,
+    dates_block = as.Date(rownames(blocks_cmp$Z)),
+    min_corr_window = 252,
+    rolling_window = 504,
+    S_builder = build_nlshrink_target,
+    S_update_freq = "biyearly",
+    trace = TRUE
+  )
+})
+
+print(time_dcc_biyearly)
+
+get_dcc_param_summary <- function(dcc_obj) {
+  a_vals <- sapply(dcc_obj, function(x) x$a)
+  b_vals <- sapply(dcc_obj, function(x) x$b)
+
+  c(
+    mean_a = mean(a_vals, na.rm = TRUE),
+    mean_b = mean(b_vals, na.rm = TRUE),
+    mean_ab = mean(a_vals + b_vals, na.rm = TRUE),
+    median_a = median(a_vals, na.rm = TRUE),
+    median_b = median(b_vals, na.rm = TRUE),
+    median_ab = median(a_vals + b_vals, na.rm = TRUE)
+  )
+}
+
+cmp_table <- rbind(
+  quarterly = c(
+    elapsed = time_dcc_quarterly["elapsed"],
+    get_dcc_param_summary(dcc_quarterly)
+  ),
+  yearly = c(
+    elapsed = time_dcc_yearly["elapsed"],
+    get_dcc_param_summary(dcc_yearly)
+  ),
+  biyearly = c(
+    elapsed = time_dcc_biyearly["elapsed"],
+    get_dcc_param_summary(dcc_biyearly)
+  )
+)
+
+print(round(cmp_table, 4))
+
+average_H_month_matrix <- function(dcc_res) {
+  H_all <- lapply(dcc_res, `[[`, "H_month")
+  n <- nrow(H_all[[1]])
+  H_avg <- matrix(0, n, n)
+
+  for (k in seq_along(H_all)) {
+    H_avg <- H_avg + H_all[[k]]
+  }
+
+  H_avg / length(H_all)
+}
+
+H_q <- average_H_month_matrix(dcc_quarterly)
+H_y <- average_H_month_matrix(dcc_yearly)
+H_b <- average_H_month_matrix(dcc_biyearly)
+
+frobenius_dist <- function(A, B) {
+  sqrt(sum((A - B)^2))
+}
+
+comparison_H <- c(
+  q_vs_y = frobenius_dist(H_q, H_y),
+  q_vs_b = frobenius_dist(H_q, H_b),
+  y_vs_b = frobenius_dist(H_y, H_b)
+)
+
+print(comparison_H)
+
+monthwise_H_diff <- function(dcc1, dcc2) {
+  stopifnot(length(dcc1) == length(dcc2))
+
+  sapply(seq_along(dcc1), function(i) {
+    H1 <- dcc1[[i]]$H_month
+    H2 <- dcc2[[i]]$H_month
+    sqrt(sum((H1 - H2)^2))
+  })
+}
+
+diff_q_y <- monthwise_H_diff(dcc_quarterly, dcc_yearly)
+diff_q_b <- monthwise_H_diff(dcc_quarterly, dcc_biyearly)
+diff_y_b <- monthwise_H_diff(dcc_yearly, dcc_biyearly)
+
+summary(diff_q_y)
+summary(diff_q_b)
+summary(diff_y_b)
+
+# Tables and graphs
+print(round(cmp_table, 4))
+
+comparison_table <- data.frame(
+  Comparison = c("Quarterly vs Yearly", "Quarterly vs Biyearly", "Yearly vs Biyearly"),
+  Frobenius_Distance = as.numeric(comparison_H)
+)
+
+print(comparison_table)
+
+diff_summary <- rbind(
+  q_vs_y = summary(diff_q_y),
+  q_vs_b = summary(diff_q_b),
+  y_vs_b = summary(diff_y_b)
+)
+
+print(round(diff_summary, 3))
+
+extract_ab <- function(dcc_obj) {
+  data.frame(
+    date = as.Date(names(dcc_obj)),
+    a = sapply(dcc_obj, function(x) x$a),
+    b = sapply(dcc_obj, function(x) x$b),
+    ab = sapply(dcc_obj, function(x) x$a + x$b)
+  )
+}
+
+df_q <- extract_ab(dcc_quarterly)
+df_y <- extract_ab(dcc_yearly)
+df_b <- extract_ab(dcc_biyearly)
+
+png("dcc_persistence.png", width = 800, height = 600)
+plot(df_q$date, df_q$ab, type = "l", lwd = 2,
+     main = "DCC Persistence (a+b)",
+     ylab = "a+b", xlab = "")
+lines(df_y$date, df_y$ab, col = 2, lwd = 2)
+lines(df_b$date, df_b$ab, col = 4, lwd = 2)
+legend("topright",
+       legend = c("Quarterly", "Yearly", "Biyearly"),
+       col = c(1,2,4), lwd = 2)
+dev.off()
+
+png("cov_diff.png", width = 800, height = 800)
+plot(diff_q_y, type = "l", lwd = 2,
+     main = "Monthly Covariance Differences",
+     ylab = "Frobenius Distance", xlab = "Month")
+lines(diff_q_b, col = 2, lwd = 2)
+lines(diff_y_b, col = 4, lwd = 2)
+legend("topright",
+       legend = c("Q vs Y", "Q vs B", "Y vs B"),
+       col = c(1,2,4), lwd = 2)
+dev.off()
+
+png("mon_by_mon_diff.png", width = 800, height = 800)
+hist(diff_q_y, breaks = 20, col = "gray",
+     main = "Distribution of Covariance Differences (Q vs Y)",
+     xlab = "Frobenius Distance")
+dev.off()
+
+head(dcc_biyearly)
 
 # Adjacency matrix construction 
 # @param sigma_hat is the forecasted covariance matrix 
 # @param tau is the threshold (0.1,0.5)
 # @return List with partial correlations and the adjacency matrix
-adjacency_matrix <- function(sigma_hat, tau = 0.1) {
-  # start with precision matrix 
-  theta <- solve(sigma_hat)
+adjacency_matrix <- function(sigma_hat, tau = 0.05, ridge = 1e-6,
+                             use_correlation = TRUE) {
+  sigma_hat <- as.matrix(sigma_hat)
+  sigma_hat <- (sigma_hat + t(sigma_hat)) / 2
+
+  if (use_correlation) {
+    sigma_hat <- cov_to_cor(sigma_hat, eps = ridge)
+    sigma_hat <- make_psd(sigma_hat, eps = ridge)
+    diag(sigma_hat) <- 1
+  } else {
+    sigma_hat <- make_psd(sigma_hat, eps = ridge)
+  }
+
+  theta <- solve(sigma_hat + diag(ridge, nrow(sigma_hat)))
   N <- nrow(theta)
-  # vector approach to get the partial correlation matrix
-  # make a vector for the inverse of the square roots of the diagonal elements
-  d <- 1/sqrt(diag(theta))
-  
-  # partial correlation is -theta_ij / sqrt(theta_ii * theta_jj)
+
+  d <- 1 / sqrt(diag(theta))
+
   partial_corr <- -theta * (d %o% d)
-  # set diagonals to 0 to prevent them from being -1 with themselves
   diag(partial_corr) <- 0
 
-  # now separate positive and negative adjacency matrix
-  # positive (contagion):
   adjacency_pos <- ifelse(partial_corr > tau, partial_corr, 0)
-  # negative (potential for hedging):
   adjacency_neg <- ifelse(partial_corr < -tau, -partial_corr, 0)
+
   return(list(
     partial_corr = partial_corr,
     adjacency_pos = adjacency_pos,
@@ -1145,46 +1341,27 @@ adjacency_matrix <- function(sigma_hat, tau = 0.1) {
   ))
 }
 
-# Grid search for tau
-# define the grid 
-taus <- seq(0.1, 0.5, by = 0.1)
-# store the results for each tau 
-grid_tau <- list()
-for (i in taus) {
-  # execute the function for the current tau starting from 0.1
-  adjacency_output <- adjacency_matrix(sigma_hat, tau = i)
-  grid_tau[[as.character(i)]] <- adjacency_output
-  count_positive <- sum(adjacency_output$adjacency_pos > 0)
-  count_negative <- sum(adjacency_output$adjacency_neg > 0)
-
-  # check
-  cat(sprintf("Tau: %.1f | Pos Links: %d | Neg Links: %d\n", i, count_positive, count_negative))
-}
-
 # Network Centrality function using EC 
 # @param adjacency_pos for positive adjacency matrix
 # @param adjacency_neg for negative adjacency matrix 
 # @return List with EC+ and EC-
-network_centrality <- function(adjacency_pos, adjacency_neg){
-  # eigenvalue for positive (contagion) network:
-  eigenvalue_pos <- eigen(adjacency_pos)
-  # eigenvector corresponding to largest eigenvalue for positive (contagion):
-  eigenvector_pos <- Re(eigenvalue_pos$vectors[,1])
-  # ensure positive values 
+network_centrality <- function(adjacency_pos, adjacency_neg) {
+  # positive network
+  eig_pos <- eigen(adjacency_pos)
+  idx_pos <- which.max(Re(eig_pos$values))
+  eigenvector_pos <- Re(eig_pos$vectors[, idx_pos])
+
   if (sum(eigenvector_pos) < 0) eigenvector_pos <- -eigenvector_pos
-  # normalize them 
   ec_pos <- eigenvector_pos / sum(eigenvector_pos)
-  
-  # eigenvalue for negative (potential for hedging) network:
-  eigenvalue_neg <- eigen(adjacency_neg)
-  # eigenvector corresponding to largest eigenvalue for negative (hedging):
-  eigenvector_neg <- Re(eigenvalue_neg$vectors[,1])
-  # ensure positive values 
+
+  # negative network
+  eig_neg <- eigen(adjacency_neg)
+  idx_neg <- which.max(Re(eig_neg$values))
+  eigenvector_neg <- Re(eig_neg$vectors[, idx_neg])
+
   if (sum(eigenvector_neg) < 0) eigenvector_neg <- -eigenvector_neg
-  # normalize them
   ec_neg <- eigenvector_neg / sum(eigenvector_neg)
 
-  #return list 
   return(list(
     ec_pos = ec_pos,
     ec_neg = ec_neg
@@ -1266,6 +1443,417 @@ scaling_constant <- function(f_net_unscaled, f_benchmark) {
 scaled_network_return <- function(f_net_unscaled, c) {
   c * f_net_unscaled
 }
+
+run_network_outputs <- function(dcc_list,
+                                tau = 0.05,
+                                lambda_pos = 0.1,
+                                lambda_neg = 0.1,
+                                ridge = 1e-6,
+                                eps = 1e-4,
+                                use_correlation = TRUE,
+                                asset_names = NULL) {
+  stopifnot(is.list(dcc_list), length(dcc_list) > 0)
+
+  n_periods <- length(dcc_list)
+  per_period <- vector("list", n_periods)
+  dates <- rep(as.Date(NA), n_periods)
+
+  for (m in seq_len(n_periods)) {
+    x <- dcc_list[[m]]
+    H_month <- x$H_month
+    period_date <- x$refit_date
+
+    if (is.null(H_month)) {
+      per_period[[m]] <- list(
+        date = period_date,
+        H_month = NULL,
+        sigma_vec = NULL,
+        partial_corr = NULL,
+        adjacency_pos = NULL,
+        adjacency_neg = NULL,
+        ec_pos = NULL,
+        ec_neg = NULL,
+        spillover_pos = NULL,
+        spillover_neg = NULL,
+        penalty = NULL,
+        w_tilde = NULL
+      )
+      next
+    }
+
+    H_month <- as.matrix(H_month)
+    sigma_vec <- sqrt(pmax(diag(H_month), 0))
+
+    current_names <- colnames(H_month)
+    if (is.null(current_names)) current_names <- rownames(H_month)
+    if (is.null(current_names)) {
+      if (!is.null(asset_names)) {
+        current_names <- asset_names
+      } else {
+        current_names <- paste0("Asset_", seq_len(nrow(H_month)))
+      }
+    }
+
+    adj <- adjacency_matrix(
+      sigma_hat = H_month,
+      tau = tau,
+      ridge = ridge,
+      use_correlation = use_correlation
+    )
+
+    cent <- network_centrality(
+      adjacency_pos = adj$adjacency_pos,
+      adjacency_neg = adj$adjacency_neg
+    )
+
+    spl <- spillovers(
+      adjacency_pos = adj$adjacency_pos,
+      adjacency_neg = adj$adjacency_neg,
+      ec_pos = cent$ec_pos,
+      ec_neg = cent$ec_neg,
+      sigma_vec = sigma_vec
+    )
+
+    nw <- network_adjusted_weights(
+      sigma_vec = sigma_vec,
+      spillover_pos = spl$spillover_pos,
+      spillover_neg = spl$spillover_neg,
+      lambda_pos = lambda_pos,
+      lambda_neg = lambda_neg,
+      eps = eps
+    )
+
+    per_period[[m]] <- list(
+      date = period_date,
+      H_month = H_month,
+      sigma_vec = setNames(as.numeric(sigma_vec), current_names),
+
+      partial_corr = `dimnames<-`(adj$partial_corr, list(current_names, current_names)),
+      adjacency_pos = `dimnames<-`(adj$adjacency_pos, list(current_names, current_names)),
+      adjacency_neg = `dimnames<-`(adj$adjacency_neg, list(current_names, current_names)),
+
+      ec_pos = setNames(as.numeric(cent$ec_pos), current_names),
+      ec_neg = setNames(as.numeric(cent$ec_neg), current_names),
+
+      spillover_pos = setNames(as.numeric(spl$spillover_pos), current_names),
+      spillover_neg = setNames(as.numeric(spl$spillover_neg), current_names),
+
+      penalty = setNames(as.numeric(nw$penalty), current_names),
+      w_tilde = setNames(as.numeric(nw$w_tilde), current_names)
+    )
+
+    dates[m] <- as.Date(period_date)
+  }
+
+  ok <- sapply(per_period, function(z) !is.null(z$w_tilde))
+  if (!any(ok)) stop("No valid network outputs produced.")
+
+  w_tilde_mat <- do.call(rbind, lapply(per_period[ok], function(z) unname(z$w_tilde)))
+  penalty_mat <- do.call(rbind, lapply(per_period[ok], function(z) unname(z$penalty)))
+  spillover_pos_mat <- do.call(rbind, lapply(per_period[ok], function(z) unname(z$spillover_pos)))
+  spillover_neg_mat <- do.call(rbind, lapply(per_period[ok], function(z) unname(z$spillover_neg)))
+
+  first_ok <- which(ok)[1]
+  final_names <- names(per_period[[first_ok]]$w_tilde)
+
+  colnames(w_tilde_mat) <- final_names
+  colnames(penalty_mat) <- final_names
+  colnames(spillover_pos_mat) <- final_names
+  colnames(spillover_neg_mat) <- final_names
+
+  row_ids <- as.character(dates[ok])
+  rownames(w_tilde_mat) <- row_ids
+  rownames(penalty_mat) <- row_ids
+  rownames(spillover_pos_mat) <- row_ids
+  rownames(spillover_neg_mat) <- row_ids
+
+  summary_df <- data.frame(
+    period = which(ok),
+    date = dates[ok],
+    stringsAsFactors = FALSE
+  )
+
+  list(
+    summary = summary_df,
+    w_tilde = w_tilde_mat,
+    penalty = penalty_mat,
+    spillover_pos = spillover_pos_mat,
+    spillover_neg = spillover_neg_mat,
+    per_period = per_period
+  )
+}
+
+extract_realized_forecast_returns <- function(dcc_list, returns_df) {
+  returns_dates <- as.Date(returns_df$date)
+  returns_mat <- as.matrix(returns_df[, -1, drop = FALSE])
+
+  out_list <- vector("list", length(dcc_list))
+  out_dates <- rep(as.Date(NA), length(dcc_list))
+
+  for (m in seq_along(dcc_list)) {
+    x <- dcc_list[[m]]
+
+    if (is.null(x$forecast_dates) || length(x$forecast_dates) == 0) {
+      out_list[[m]] <- NULL
+      next
+    }
+
+    fc_dates <- as.Date(x$forecast_dates)
+    idx <- match(fc_dates, returns_dates)
+
+    if (any(is.na(idx))) {
+      stop(sprintf("Could not match forecast dates to returns_df in period %d.", m))
+    }
+
+    ret_block <- returns_mat[idx, , drop = FALSE]
+
+    realized_vec <- apply(ret_block, 2, function(z) prod(1 + z, na.rm = TRUE) - 1)
+
+    out_list[[m]] <- realized_vec
+    out_dates[m] <- as.Date(x$refit_date)
+  }
+
+  ok <- !sapply(out_list, is.null)
+  realized_mat <- do.call(rbind, out_list[ok])
+
+  colnames(realized_mat) <- colnames(returns_df[, -1, drop = FALSE])
+  rownames(realized_mat) <- as.character(out_dates[ok])
+
+  list(
+    summary = data.frame(
+      period = which(ok),
+      date = out_dates[ok],
+      stringsAsFactors = FALSE
+    ),
+    realized_returns = realized_mat,
+    per_period = out_list
+  )
+}
+
+compute_network_returns <- function(net_obj, realized_obj) {
+  common_dates <- intersect(rownames(net_obj$w_tilde), rownames(realized_obj$realized_returns))
+
+  W <- net_obj$w_tilde[common_dates, , drop = FALSE]
+  R <- realized_obj$realized_returns[common_dates, , drop = FALSE]
+
+  if (!identical(colnames(W), colnames(R))) {
+    stop("Column names of weights and realized returns do not match.")
+  }
+
+  data.frame(
+    date = as.Date(common_dates),
+    network_return_unscaled = rowSums(W * R, na.rm = TRUE),
+    stringsAsFactors = FALSE
+  )
+}
+
+compute_equal_weight_benchmark <- function(realized_obj, common_dates = NULL) {
+  R <- realized_obj$realized_returns
+
+  if (!is.null(common_dates)) {
+    R <- R[common_dates, , drop = FALSE]
+  }
+
+  ew_ret <- rowMeans(R, na.rm = TRUE)
+
+  data.frame(
+    date = as.Date(rownames(R)),
+    EW_benchmark = as.numeric(ew_ret),
+    stringsAsFactors = FALSE
+  )
+}
+
+# =================================================
+# Run for current test case
+# first 1100 obs, first 8 factors
+# =================================================
+
+factor_names_8 <- colnames(test_data_cmp[, -1, drop = FALSE])
+
+net_biyearly <- run_network_outputs(
+  dcc_list = dcc_biyearly,
+  tau = sqrt(0.05),
+  lambda_pos = 0.1,
+  lambda_neg = 0.1,
+  asset_names = factor_names_8
+)
+
+realized_biyearly <- extract_realized_forecast_returns(
+  dcc_list = dcc_biyearly,
+  returns_df = test_data_cmp
+)
+
+# force network output column names to match realized returns exactly
+colnames(net_biyearly$w_tilde) <- colnames(realized_biyearly$realized_returns)
+colnames(net_biyearly$penalty) <- colnames(realized_biyearly$realized_returns)
+colnames(net_biyearly$spillover_pos) <- colnames(realized_biyearly$realized_returns)
+colnames(net_biyearly$spillover_neg) <- colnames(realized_biyearly$realized_returns)
+
+network_returns_biyearly <- compute_network_returns(
+  net_obj = net_biyearly,
+  realized_obj = realized_biyearly
+)
+
+benchmark_biyearly <- compute_equal_weight_benchmark(
+  realized_obj = realized_biyearly,
+  common_dates = as.character(network_returns_biyearly$date)
+)
+
+# optional combined object for later performance code
+network_vs_benchmark_biyearly <- network_returns_biyearly |>
+  left_join(benchmark_biyearly, by = "date")
+
+# inspect
+net_biyearly$summary
+net_biyearly$w_tilde
+net_biyearly$penalty
+net_biyearly$spillover_pos
+net_biyearly$spillover_neg
+
+realized_biyearly$realized_returns
+
+network_returns_biyearly
+benchmark_biyearly
+network_vs_benchmark_biyearly
+
+library(igraph)
+
+# Factor labels (nicer names in plots)
+factor_labels <- c(
+  mkt_excess = "MKT",
+  smb = "SMB",
+  hml = "HML",
+  rmw = "RMW",
+  cma = "CMA",
+  mom = "MOM",
+  agric = "AGRIC",
+  food = "FOOD"
+)
+
+# Build graph
+build_factor_graph <- function(adj_matrix) {
+  A <- as.matrix(adj_matrix)
+  diag(A) <- 0
+
+  graph_from_adjacency_matrix(
+    A,
+    mode = "undirected",
+    weighted = TRUE,
+    diag = FALSE
+  )
+}
+
+# Plot single network
+plot_factor_network <- function(net_obj, date, type = "positive") {
+
+  idx <- which(as.character(net_obj$summary$date) == as.character(as.Date(date)))
+  period_id <- net_obj$summary$period[idx]
+  pp <- net_obj$per_period[[period_id]]
+
+  if (type == "positive") {
+    A <- pp$adjacency_pos
+    edge_col <- "darkgreen"
+  } else {
+    A <- pp$adjacency_neg
+    edge_col <- "red"
+  }
+
+  g <- build_factor_graph(A)
+
+  # labels
+  V(g)$label <- factor_labels[V(g)$name]
+
+  # node size (centrality)
+  cent <- if (type == "positive") pp$ec_pos else pp$ec_neg
+  cent <- cent[V(g)$name]
+
+  V(g)$size <- 10 + 30 * (cent / max(cent))
+
+  # edge width
+  E(g)$width <- 1 + 6 * (E(g)$weight / max(E(g)$weight))
+
+  V(g)$color <- "lightblue"
+  E(g)$color <- edge_col
+
+  plot(
+    g,
+    layout = layout_in_circle(g),
+    main = paste(type, "network -", date)
+  )
+}
+
+# Plot positive + negative side by side
+plot_network_pair <- function(net_obj, date) {
+  par(mfrow = c(1, 2))
+
+  plot_factor_network(net_obj, date, "positive")
+  plot_factor_network(net_obj, date, "negative")
+
+  par(mfrow = c(1, 1))
+}
+
+# Plot sequence
+plot_network_sequence <- function(net_obj, dates, type = "positive") {
+  n <- length(dates)
+  par(mfrow = c(ceiling(n / 2), 2))
+
+  for (d in dates) {
+    plot_factor_network(net_obj, d, type)
+  }
+
+  par(mfrow = c(1, 1))
+}
+
+# Heatmap of partial correlations
+plot_heatmap <- function(net_obj, date) {
+
+  idx <- which(as.character(net_obj$summary$date) == as.character(as.Date(date)))
+  period_id <- net_obj$summary$period[idx]
+  P <- net_obj$per_period[[period_id]]$partial_corr
+
+  lab <- factor_labels[colnames(P)]
+  colnames(P) <- lab
+  rownames(P) <- lab
+
+  image(
+    1:nrow(P), 1:ncol(P), t(P[nrow(P):1, ]),
+    col = colorRampPalette(c("red", "white", "green"))(100),
+    axes = FALSE,
+    main = paste("Partial correlations -", date)
+  )
+
+  axis(1, at = 1:ncol(P), labels = colnames(P), las = 2)
+  axis(2, at = 1:nrow(P), labels = rev(rownames(P)), las = 2)
+}
+
+# 1) Positive + Negative network (side-by-side)
+png("network_pair_1974_09_30.png", width = 1200, height = 600)
+plot_network_pair(net_biyearly, "1974-09-30")
+dev.off()
+
+# 2) Positive network only
+png("network_positive_1974_09_30.png", width = 800, height = 600)
+plot_factor_network(net_biyearly, "1974-09-30", "positive")
+dev.off()
+
+# 3) Negative network only
+png("network_negative_1974_09_30.png", width = 800, height = 600)
+plot_factor_network(net_biyearly, "1974-09-30", "negative")
+dev.off()
+
+# 4) Sequence of first 6 months (positive networks)
+png("network_sequence_positive.png", width = 1400, height = 900)
+plot_network_sequence(
+  net_biyearly,
+  net_biyearly$summary$date[1:6],
+  "positive"
+)
+dev.off()
+
+# 5) Heatmap
+png("heatmap_1974_09_30.png", width = 800, height = 700)
+plot_heatmap(net_biyearly, "1974-09-30")
+dev.off()
 
 # =================================================
 # Benchmarks
