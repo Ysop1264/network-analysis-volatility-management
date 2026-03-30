@@ -401,64 +401,64 @@ run_all_garch_monthly <- function(data, date_col = "date", init_window = 504) {
 # Too long to run what is below, so will run test case first
 # garch_results <- run_all_garch_daily(managed_portfolios)
 
-system.time({
-  test_result <- fit_garch_expanding_monthly(
-    ret = managed_portfolios[[2]][1:1100],
-    dates = managed_portfolios$date[1:1100],
-    init_window = 504,
-    series_name = names(managed_portfolios)[2]
-  )
-})
+#system.time({
+ # test_result <- fit_garch_expanding_monthly(
+  #  ret = managed_portfolios[[2]][1:1100],
+   # dates = managed_portfolios$date[1:1100],
+    #init_window = 504,
+   # series_name = names(managed_portfolios)[2]
+  #)
+#})
 
-sum(is.na(test_result$sigma))
-nrow(test_result)
-head(test_result)
-tail(test_result)
+#sum(is.na(test_result$sigma))
+#nrow(test_result)
+#head(test_result)
+#tail(test_result)
 
-system.time({
-  test_result <- fit_garch_expanding_monthly(
-    ret = managed_portfolios[[2]][1:1100],
-    dates = managed_portfolios$date[1:1100],
-    init_window = 504
-  )
-})
+#system.time({
+#  test_result <- fit_garch_expanding_monthly(
+#    ret = managed_portfolios[[2]][1:1100],
+#    dates = managed_portfolios$date[1:1100],
+#    init_window = 504
+#  )
+#})
 
-system.time({
-  garch_results_test <- run_all_garch_monthly(
-    managed_portfolios[1:1100, ],
-    date_col = "date",
-    init_window = 504
-  )
-})
+#system.time({
+#  garch_results_test <- run_all_garch_monthly(
+#    managed_portfolios[1:1100, ],
+#    date_col = "date",
+#    init_window = 504
+#  )
+#})
 
-na_summary <- sapply(garch_results_test, function(x) sum(is.na(x$sigma)))
-sort(na_summary[na_summary > 0], decreasing = TRUE)
+#na_summary <- sapply(garch_results_test, function(x) sum(is.na(x$sigma)))
+#sort(na_summary[na_summary > 0], decreasing = TRUE)
 
-table(sapply(garch_results_test, nrow))
+#table(sapply(garch_results_test, nrow))
 
-z_summary <- sapply(garch_results_test, function(x) sd(x$z, na.rm = TRUE))
-summary(z_summary)
+#z_summary <- sapply(garch_results_test, function(x) sd(x$z, na.rm = TRUE))
+#summary(z_summary)
 
 # sGARCH is underestimating volatility (has fat tails , sd of 1.18, 
 # using Studnet t-distribution for a run)
-system.time({
-  garch_results_test_t <- run_all_garch_monthly(
-    managed_portfolios[1:1100, ],
-    date_col = "date",
-    init_window = 504
-  )
-})
+#system.time({
+#  garch_results_test_t <- run_all_garch_monthly(
+#    managed_portfolios[1:1100, ],
+#    date_col = "date",
+#    init_window = 504
+#  )
+#})
 
-na_summary_t <- sapply(garch_results_test_t, function(x) sum(is.na(x$sigma)))
-sort(na_summary_t[na_summary_t > 0], decreasing = TRUE)
+#na_summary_t <- sapply(garch_results_test_t, function(x) sum(is.na(x$sigma)))
+#sort(na_summary_t[na_summary_t > 0], decreasing = TRUE)
 
-z_summary_t <- sapply(garch_results_test_t, function(x) sd(x$z, na.rm = TRUE))
-summary(z_summary_t)
+#z_summary_t <- sapply(garch_results_test_t, function(x) sd(x$z, na.rm = TRUE))
+#summary(z_summary_t)
 
-table(sapply(garch_results_test_t, nrow))
+#table(sapply(garch_results_test_t, nrow))
 
-mean_z <- sapply(garch_results_test_t, function(x) mean(x$z, na.rm = TRUE))
-summary(mean_z)
+#mean_z <- sapply(garch_results_test_t, function(x) mean(x$z, na.rm = TRUE))
+#summary(mean_z)
 
 # Constructing standardised residual matrix Z, calculated
 # in GARCH functions already
@@ -563,12 +563,10 @@ make_month_index <- function(dates, min_obs = 252) {
 
   month_id <- format(dates, "%Y-%m")
 
-  # End-of-month row index for each observed month
   month_end_idx <- tapply(seq_len(n), month_id, max)
+  refit_months <- names(month_end_idx)
   month_end_idx <- as.integer(month_end_idx)
 
-  # Creating a list of monthly forecasting blocks:
-  # for each month-end t, forecasts the rows belonging to next month
   out <- vector("list", length(month_end_idx) - 1)
   out_pos <- 1
 
@@ -583,7 +581,7 @@ make_month_index <- function(dates, min_obs = 252) {
     if (length(forecast_idx) == 0) next
 
     out[[out_pos]] <- list(
-      refit_month = names(month_end_idx)[k],
+      refit_month = refit_months[k],
       refit_idx = t_end,
       refit_date = dates[t_end],
       insample_idx = insample_idx,
@@ -655,7 +653,9 @@ build_nlshrink_target <- function(Z_insample, eps = 1e-8) {
 
   # Convert shrunk covariance target into a correlation target for DCC
   S_target <- cov_to_cor(Sigma_nl, eps = eps)
+  # Correlation might not be PSD, so re-done even though Sigma_nl is psd
   S_target <- make_psd(S_target, eps = eps)
+  # Now, diagonals are no longer 1, so making it a corr matrix again
   S_target <- cov_to_cor(S_target, eps = eps)
 
   S_target
@@ -703,126 +703,184 @@ dcc_filter <- function(Z, a, b, S) {
   list(Q = Q_list, R = R_list, Q_T = Q_prev)
 }
 
-# Computing negative loglikelihood of the DCC model given (a,b)
-dcc_negloglik <- function(par, Z, S, penalty = 1e12) {
-  # Parameter vector
+dcc_negloglik <- function(par, Z, S, penalty = 1e12, ridge = 1e-8) {
   a <- par[1]
   b <- par[2]
 
-  # DCC constraints
   if (!is.finite(a) || !is.finite(b) || a < 0 || b < 0 || (a + b) >= 0.999) {
     return(penalty)
   }
 
-  # Just some matrix formatting, more for clarity
   Z <- as.matrix(Z)
+  S <- as.matrix(S)
+
   Tn <- nrow(Z)
   N <- ncol(Z)
 
-  # Given (a,b), first run the entire DCC filter to construct all correlation matrices
-  filt <- dcc_filter(Z, a = a, b = b, S = S)
-  nll <- 0
-
+  Q_prev <- S
+  ll <- 0
 
   for (t in seq_len(Tn)) {
-    zt <- Z[t, ]
-    if (any(!is.finite(zt))) next
+    zlag <- if (t == 1) rep(0, N) else Z[t - 1, ]
+    zlag[!is.finite(zlag)] <- 0
 
-    # getting model implied R_t, and then make it positive semidefinite
-    Rt <- filt$R[[t]]
-    Rt <- make_psd(Rt)
+    Q_t <- (1 - a - b) * S + a * tcrossprod(zlag) + b * Q_prev
+    Q_t <- (Q_t + t(Q_t)) / 2
 
-    detR <- determinant(Rt, logarithm = TRUE)
-    if (!is.finite(detR$modulus)) return(penalty)
+    Rt <- normalize_Q_to_R(Q_t, eps = ridge)
+    if (any(!is.finite(Rt))) {
+      return(penalty)
+    }
 
-    invR <- tryCatch(solve(Rt), error = function(e) NULL)
-    if (is.null(invR)) return(penalty)
+    Rt <- make_psd(Rt, eps = ridge)
+    Rt <- (Rt + t(Rt)) / 2
+    diag(Rt) <- 1
 
-    quad <- drop(t(zt) %*% invR %*% zt)
-    if (!is.finite(quad)) return(penalty)
+    Rt_reg <- Rt + diag(ridge, N)
 
-    nll <- nll + as.numeric(detR$modulus) + quad
+    U <- tryCatch(chol(Rt_reg), error = function(e) NULL)
+    if (is.null(U)) {
+      return(penalty)
+    }
+
+    logdet <- 2 * sum(log(diag(U)))
+    if (!is.finite(logdet)) {
+      return(penalty)
+    }
+
+    zt <- as.numeric(Z[t, ])
+    if (any(!is.finite(zt))) {
+      return(penalty)
+    }
+
+    y <- tryCatch(backsolve(U, zt, transpose = TRUE), error = function(e) NULL)
+    if (is.null(y) || any(!is.finite(y))) {
+      return(penalty)
+    }
+
+    x <- tryCatch(backsolve(U, y), error = function(e) NULL)
+    if (is.null(x) || any(!is.finite(x))) {
+      return(penalty)
+    }
+
+    quad <- sum(zt * x)
+    if (!is.finite(quad)) {
+      return(penalty)
+    }
+
+    ll <- ll + logdet + quad
+    Q_prev <- Q_t
   }
 
-  # One-half factor as in classic Gaussian Likelihood
-  0.5 * nll
+  0.5 * ll
 }
 
-# Function to estimate DCC parameters (a,b) from in-sample standardised residuals
-estimate_dcc <- function(Z_insample, S_target = NULL, 
-start_par = c(0.03, 0.95)) { # Need to justify starting values
+estimate_dcc <- function(Z_insample, S_target = NULL, start_par = c(0.03, 0.95),
+                         ridge = 1e-8, stationarity_eps = 1e-4) {
   Z_insample <- as.matrix(Z_insample)
-
-  # Drop rows with any missing values for DCC estimation
-  keep <- complete.cases(Z_insample)
-  Z_use <- Z_insample[keep, , drop = FALSE]
+  Z_use <- Z_insample[complete.cases(Z_insample), , drop = FALSE]
 
   if (nrow(Z_use) < 50) {
     stop("Too few complete observations to estimate DCC.")
   }
 
-  # Choosing long-run target S
   if (is.null(S_target)) {
     S_target <- safe_cor(Z_use)
   } else {
+    S_target <- as.matrix(S_target)
+    S_target <- (S_target + t(S_target)) / 2
     S_target <- make_psd(S_target)
     S_target <- cov_to_cor(S_target)
+    S_target <- make_psd(S_target)
+    diag(S_target) <- 1
   }
 
-  # Optimisation function to minimise log likelihood
-  # We use L-BFGS to minmise computation, and its also better for few parameters
+  start_a <- max(1e-6, start_par[1])
+  start_b <- max(1e-6, start_par[2])
+
+  if ((start_a + start_b) >= (1 - stationarity_eps)) {
+    scale_factor <- (1 - stationarity_eps) / (start_a + start_b)
+    start_a <- start_a * scale_factor
+    start_b <- start_b * scale_factor
+  }
+
   opt <- optim(
-    par = start_par,
-    fn = dcc_negloglik,
-    Z = Z_use,
-    S = S_target,
+    par = c(start_a, start_b),
+    fn = function(par) dcc_negloglik(par, Z_use, S_target, ridge = ridge),
     method = "L-BFGS-B",
     lower = c(1e-6, 1e-6),
     upper = c(0.5, 0.999)
   )
 
-  # Estimated Parameters
+  if (!is.list(opt) || is.null(opt$convergence) || opt$convergence != 0 ||
+      is.null(opt$value) || !is.finite(opt$value)) {
+    stop("DCC optimization failed to converge.")
+  }
+
   a_hat <- opt$par[1]
   b_hat <- opt$par[2]
 
-  # Enforce stationarity softly if optimiser lands near the boundary
-  if ((a_hat + b_hat) >= 0.999) {
-    s <- a_hat + b_hat
-    a_hat <- a_hat * 0.999 / s
-    b_hat <- b_hat * 0.999 / s
+  if ((a_hat + b_hat) >= (1 - stationarity_eps)) {
+    scale_factor <- (1 - stationarity_eps) / (a_hat + b_hat)
+    a_hat <- a_hat * scale_factor
+    b_hat <- b_hat * scale_factor
   }
 
-  # Gives in-sample state Q_t, which we need to forecast on
-  filt <- dcc_filter(Z_use, a = a_hat, b = b_hat, S = S_target)
+  # Only run full filter once, after optimization
+  filt <- dcc_filter(Z_use, a_hat, b_hat, S_target)
 
   list(
     a = a_hat,
     b = b_hat,
     S = S_target,
     Q_T = filt$Q_T,
-    opt = opt,
-    n_obs = nrow(Z_use)
+    Q = filt$Q,
+    R = filt$R,
+    nll = opt$value,
+    convergence = opt$convergence
   )
 }
 
 # Function that uses DCC estimation to forecast multiple steps ahead correlations
-forecast_dcc_correlations <- function(Q_T, S, a, b, h) {
-  phi <- a + b # Persistence term
-  out <- vector("list", h)
+forecast_dcc_correlations <- function(Q_T, S, a, b, h ) {
+  Q_T <- as.matrix(Q_T)
+  S <- as.matrix(S)
 
-  Q_prev <- Q_T
-  # forecasting from the last in-sample state and move forward day by day
-  for (k in seq_len(h)) {
-    # Expected future DCC recursion
-    Q_fc <- S + phi * (Q_prev - S)
-    Q_fc <- (Q_fc + t(Q_fc)) / 2
-    R_fc <- normalize_Q_to_R(Q_fc)
+  Q_T <- (Q_T + t(Q_T)) / 2
+  S <- (S + t(S)) / 2
 
-    out[[k]] <- list(Q = Q_fc, R = R_fc)
-    Q_prev <- Q_fc
+  Q_T <- make_psd(Q_T)
+  S <- make_psd(S)
+  S <- cov_to_cor(S)
+  S <- make_psd(S)
+  diag(S) <- 1
+
+  phi <- a + b
+  if (!is.finite(phi) || phi < 0 || phi >= 1) {
+    stop("Invalid DCC persistence parameter: a + b must lie in [0, 1).")
   }
 
-  out
+  Q_fc <- vector("list", h)
+  R_fc <- vector("list", h)
+
+  Q_prev <- Q_T
+
+  for (k in seq_len(h)) {
+    Q_next <- S + phi * (Q_prev - S)
+    Q_next <- (Q_next + t(Q_next)) / 2
+    Q_next <- make_psd(Q_next)
+
+    R_next <- normalize_Q_to_R(Q_next)
+    R_next <- make_psd(R_next)
+    R_next <- cov_to_cor(R_next)
+    diag(R_next) <- 1
+
+    Q_fc[[k]] <- Q_next
+    R_fc[[k]] <- R_next
+    Q_prev <- Q_next
+  }
+
+  list(Q = Q_fc, R = R_fc)
 }
 
 # Rebuilding conditional covariance matrices using future volatility
@@ -847,7 +905,7 @@ build_cov_from_sigma_and_R <- function(SIGMA_future, R_list, dates_future = NULL
 
     # Main covariance reconstruction formula
     D_t <- diag(sig_t, nrow = N)
-    R_t <- R_list[[t]]$R
+    R_t <- R_list[[t]]
     H_t <- D_t %*% R_t %*% D_t
     H_t <- (H_t + t(H_t)) / 2
     H_list[[t]] <- H_t
@@ -924,13 +982,35 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
     } else {
       S_builder(Z_insample)
     }
+    Z_insample <- Z_block[blk$insample_idx, , drop = FALSE]
+
+    cat("\n============================\n")
+    cat("Refit date:", as.character(blk$refit_date), "\n")
+    cat("dim(Z_insample):", paste(dim(Z_insample), collapse = " x "), "\n")
+    cat("Any non-finite in Z_insample:", any(!is.finite(Z_insample)), "\n")
+    cat("Complete rows:", sum(complete.cases(Z_insample)), "\n")
+
+    z_sds <- apply(Z_insample, 2, sd, na.rm = TRUE)
+    cat("Min column sd:", min(z_sds, na.rm = TRUE), "\n")
+    cat("Any zero/NA column sd:",
+      any(!is.finite(z_sds) | z_sds < 1e-8), "\n")
+
+    S_dbg <- cor(Z_insample, use = "pairwise.complete.obs")
+    cat("Any non-finite in S:", any(!is.finite(S_dbg)), "\n")
+    cat("Symmetry check:", max(abs(S_dbg - t(S_dbg))), "\n")
+    cat("Min eigenvalue of S:",
+      min(eigen(S_dbg, symmetric = TRUE, only.values = TRUE)$values), "\n")
+    cat("============================\n")
 
     # Estimate DCC model on in-sample block, if it fails just retunr  null instead
     # of crashing everything
     dcc_fit <- tryCatch(
-      estimate_dcc(Z_insample, S_target = S_target),
-      error = function(e) NULL
-    )
+    estimate_dcc(Z_insample, S_target),
+     error = function(e) {
+      cat("DCC failed at", as.character(blk$refit_date), ":", e$message, "\n")
+      return(NULL)
+    }
+  )
 
     if (is.null(dcc_fit)) {
       out[[i]] <- list(
@@ -939,6 +1019,7 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
         a = NA_real_,
         b = NA_real_,
         R_forecasts = NULL,
+        Q_forecasts = NULL,
         H_forecasts = NULL,
         H_month = NULL
       )
@@ -956,7 +1037,7 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
 
     H_fc <- build_cov_from_sigma_and_R(
       SIGMA_future = SIGMA_future,
-      R_list = dcc_fc,
+      R_list = dcc_fc$R,
       dates_future = blk$forecast_dates
     )
 
@@ -974,10 +1055,10 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
       b = dcc_fit$b,
       S = dcc_fit$S,
       Q_T = dcc_fit$Q_T,
-      R_forecasts = lapply(dcc_fc, `[[`, "R"),
+      R_forecasts = dcc_fc$R,
+      Q_forecasts = dcc_fc$Q,
       H_forecasts = H_fc,
-      H_month = H_month,
-      opt = dcc_fit$opt
+      H_month = H_month
     )
   }
 
@@ -985,56 +1066,55 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
   out
 }
 
-# Running small DCC sample to check
-nrow(Z_block)
-nrow(SIGMA_block)
-length(managed_portfolios$date)
-class(Z_block)
-class(SIGMA_block)
+# Subset test for time check
+test_data <- managed_portfolios[1:800, c("date", names(managed_portfolios)[2:9])]
 
-n_test <- min(
-  1100,
-  nrow(Z_block),
-  nrow(SIGMA_block),
-  length(managed_portfolios$date)
-)
+# GARCH stage
+time_garch <- system.time({
+  garch_test <- run_all_garch_monthly(
+    test_data,
+    date_col = "date",
+    init_window = 504
+  )
+})
 
-system.time({
+print(time_garch)
+
+# Block construction
+time_blocks <- system.time({
+  blocks_test <- build_garch_blocks(garch_test)
+})
+
+print(time_blocks)
+
+rm(dcc_test)
+
+# DCC stage (standard first)
+time_dcc <- system.time({
   dcc_test <- run_dcc_monthly(
-    Z_block = Z_block[1:n_test, , drop = FALSE],
-    SIGMA_block = SIGMA_block[1:n_test, , drop = FALSE],
-    dates_block = managed_portfolios$date[1:n_test],
+    Z_block = blocks_test$Z,
+    SIGMA_block = blocks_test$SIGMA,
+    dates_block = as.Date(rownames(blocks_test$Z)),
     min_corr_window = 252,
-    S_builder = build_nlshrink_target,
+    S_builder = NULL,   # start WITHOUT shrinkage
     trace = TRUE
   )
 })
 
+print(time_dcc)
+
 length(dcc_test)
+names(dcc_test)[1:3]
+str(dcc_test[[1]], max.level = 1)
+dcc_test[[1]]$a
+dcc_test[[1]]$b
+dcc_test[[1]]$a + dcc_test[[1]]$b
+dim(dcc_test[[1]]$H_month)
+length(dcc_test[[1]]$R_forecasts)
+length(dcc_test[[1]]$forecast_dates)
 
-summary_df <- data.frame(
-  refit_date = as.Date(sapply(dcc_test, `[[`, "refit_date")),
-  a = sapply(dcc_test, `[[`, "a"),
-  b = sapply(dcc_test, `[[`, "b"),
-  has_H_month = sapply(dcc_test, function(x) !is.null(x$H_month))
-)
-
-print(summary_df)
-print(summary(summary_df$a))
-print(summary(summary_df$b))
-print(table(summary_df$has_H_month))
-
-first_ok <- which(sapply(dcc_test, function(x) {
-  !is.null(x$H_month) && all(is.finite(x$H_month))
-}))[1]
-
-res <- dcc_test[[first_ok]]
-
-res$refit_date
-res$a
-res$b
-dim(res$H_month)
-range(eigen(res$H_month, symmetric = TRUE)$values)
+dcc_test[[1]]$H_month[1:5, 1:5]
+dcc_test[[1]]$R_forecasts[[1]][1:5, 1:5]
 
 # Adjacency matrix construction 
 # @param sigma_hat is the forecasted covariance matrix 
