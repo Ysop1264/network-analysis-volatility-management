@@ -46,3 +46,5 @@ Kornel (14:30): Adding drowdown figure code
 Kornel (17:30): I think I finally repaired the benchmark MVE so that the returns make sense
 Kornel (18:00): Updated the Performance measures: annualized some values and changed to percentages in accordance to the final tables
 Kornel (21:30): Change that the 'target' for optimal MVE weights is that they sum up to one, I will explain in the appendix why in more deteil that it already is
+
+30/03/2026 - Yadhu (05:25): Changed some parts of our GARCH calculation. Estimated through t-distribution because our forecasts have fat tails. We can always discuss and revert back to normal though. Sorry for the long layoff, got busy with family stuff
