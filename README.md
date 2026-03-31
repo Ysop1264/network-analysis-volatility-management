@@ -204,6 +204,10 @@ Important:
 - `adjacency_output` – Temporary object storing outputs of adjacency_matrix() during grid search
 - `count_positive` – Number of positive links 
 - `count_negative` – Number of negative links
+- 'vol_target' - unconditional standard deviation of benchmark, the EW Buy-and-Hold portfolio
+- 'vol_strat_unscaled' - unconditional standard deviation of unscaled network strategy returns
+- 'c_scaling' - vol_target / vol_strat_unscaled
+- 'NET_strategy_return' - final return series for network-adjusted strategy, fp^NET
 
 
 
