@@ -167,8 +167,6 @@ graph_annualized_returns <- function(returns_df){
   
 }
 
-
-
 # Constructed Realised Variance
 rv_monthly <- managed_portfolios %>%
   mutate(month = floor_date(date, "month")) %>%
@@ -278,106 +276,166 @@ fit_garch_expanding_monthly <- function(
 
   out_list <- vector("list", n - init_window)
   out_pos <- 1
-
-  for (k in seq_along(refit_idx)) {
-    t_refit <- refit_idx[k]
-    insample_ret <- ret[1:t_refit]
-
-    next_refit <- if (k < length(refit_idx)) refit_idx[k + 1] else n
-    forecast_idx <- (t_refit + 1):next_refit
-
-    if (length(forecast_idx) == 0) next
-
-    if (sd(insample_ret, na.rm = TRUE) <= 1e-8) {
-      for (j in forecast_idx) {
-        out_list[[out_pos]] <- data.frame(
-          date = dates[j],
-          mu = NA_real_,
-          sigma = NA_real_,
-          sigma2 = NA_real_,
-          resid = NA_real_,
-          z = NA_real_,
-          refit_date = dates[t_refit]
-        )
-        out_pos <- out_pos + 1
-      }
-      next
-    }
-
-    fit <- safe_fit(insample_ret, series_name, dates[t_refit])
-
-    if (is.null(fit)) {
-      for (j in forecast_idx) {
-        out_list[[out_pos]] <- data.frame(
-          date = dates[j],
-          mu = NA_real_,
-          sigma = NA_real_,
-          sigma2 = NA_real_,
-          resid = NA_real_,
-          z = NA_real_,
-          refit_date = dates[t_refit]
-        )
-        out_pos <- out_pos + 1
-      }
-      next
-    }
-
-    fc <- safe_forecast(fit, length(forecast_idx), series_name, dates[t_refit])
-
-    if (!is.null(fit)) {
-      message("PARAM NAMES | series=", series_name, " | ",
-              paste(names(coef(fit)), collapse = ", "))
-    }
-
-    if (is.null(fc)) {
-      for (j in forecast_idx) {
-        out_list[[out_pos]] <- data.frame(
-          date = dates[j],
-          mu = NA_real_,
-          sigma = NA_real_,
-          sigma2 = NA_real_,
-          resid = NA_real_,
-          z = NA_real_,
-          refit_date = dates[t_refit]
-        )
-        out_pos <- out_pos + 1
-      }
-      next
-    }
-
-    mu_fc <- as.numeric(fitted(fc))
-    sigma_fc <- as.numeric(sigma(fc))
-
-    for (h in seq_along(forecast_idx)) {
-      j <- forecast_idx[h]
-      r_next <- ret[j]
-      mu_h <- mu_fc[h]
-      sigma_h <- sigma_fc[h]
-      sigma2_h <- sigma_h^2
-
-      z_next <- if (is.na(sigma_h) || sigma_h <= 0) {
-        NA_real_
-      } else {
-        (r_next - mu_h) / sigma_h
-      }
-
-      out_list[[out_pos]] <- data.frame(
-        date = dates[j],
-        mu = mu_h,
-        sigma = sigma_h,
-        sigma2 = sigma2_h,
-        resid = r_next - mu_h,
-        z = z_next,
-        refit_date = dates[t_refit]
-      )
-      out_pos <- out_pos + 1
-    }
+  
+  # Fit only once 
+  t_refit <- init_window
+  insample_ret <- ret[1:t_refit]
+  
+  fit <- safe_fit(insample_ret, series_name, dates[t_refit])
+  
+  if (is.null(fit)) {
+    stop("Initial GARCH fit failed — cannot freeze parameters.")
   }
-
+  
+  # extract fixed parameters
+  fixed_pars <- coef(fit)
+  
+  # create fixed spec
+  spec_fixed <- ugarchspec(
+    variance.model = list(model = "sGARCH", garchOrder = garch_order),
+    mean.model = list(armaOrder = arma_order, include.mean = TRUE),
+    distribution.model = distribution,
+    fixed.pars = as.list(fixed_pars)
+  )
+  
+  # forecast entire sample 
+  fc <- ugarchforecast(
+    spec_fixed,
+    data = ret,
+    n.ahead = 1,
+    n.roll = n - t_refit - 1
+  )
+  
+  mu_fc <- as.numeric(fitted(fc))
+  sigma_fc <- as.numeric(sigma(fc))
+  
+  out_list <- vector("list", length(mu_fc))
+  
+  for (j in seq_along(mu_fc)) {
+    idx <- j + t_refit
+    r_next <- ret[idx]
+    
+    sigma_h <- sigma_fc[j]
+    mu_h <- mu_fc[j]
+    
+    z_next <- if (is.na(sigma_h) || sigma_h <= 0) NA_real_ else (r_next - mu_h) / sigma_h
+    
+    out_list[[j]] <- data.frame(
+      date = dates[idx],
+      mu = mu_h,
+      sigma = sigma_h,
+      sigma2 = sigma_h^2,
+      resid = r_next - mu_h,
+      z = z_next,
+      refit_date = dates[t_refit]
+    )
+  }
+  
   out <- do.call(rbind, out_list)
   out <- out[order(out$date), ]
   rownames(out) <- NULL
-  out
+  return(out)
+  
+  # comment out for now to freeze the estimates 2 years 
+  # for (k in seq_along(refit_idx)) {
+  #   t_refit <- refit_idx[k]
+  #   insample_ret <- ret[1:t_refit]
+  # 
+  #   next_refit <- if (k < length(refit_idx)) refit_idx[k + 1] else n
+  #   forecast_idx <- (t_refit + 1):next_refit
+  # 
+  #   if (length(forecast_idx) == 0) next
+  # 
+  #   if (sd(insample_ret, na.rm = TRUE) <= 1e-8) {
+  #     for (j in forecast_idx) {
+  #       out_list[[out_pos]] <- data.frame(
+  #         date = dates[j],
+  #         mu = NA_real_,
+  #         sigma = NA_real_,
+  #         sigma2 = NA_real_,
+  #         resid = NA_real_,
+  #         z = NA_real_,
+  #         refit_date = dates[t_refit]
+  #       )
+  #       out_pos <- out_pos + 1
+  #     }
+  #     next
+  #   }
+  # 
+  #   fit <- safe_fit(insample_ret, series_name, dates[t_refit])
+  # 
+  #   if (is.null(fit)) {
+  #     for (j in forecast_idx) {
+  #       out_list[[out_pos]] <- data.frame(
+  #         date = dates[j],
+  #         mu = NA_real_,
+  #         sigma = NA_real_,
+  #         sigma2 = NA_real_,
+  #         resid = NA_real_,
+  #         z = NA_real_,
+  #         refit_date = dates[t_refit]
+  #       )
+  #       out_pos <- out_pos + 1
+  #     }
+  #     next
+  #   }
+  # 
+  #   fc <- safe_forecast(fit, length(forecast_idx), series_name, dates[t_refit])
+  # 
+  #   if (!is.null(fit)) {
+  #     message("PARAM NAMES | series=", series_name, " | ",
+  #             paste(names(coef(fit)), collapse = ", "))
+  #   }
+  # 
+  #   if (is.null(fc)) {
+  #     for (j in forecast_idx) {
+  #       out_list[[out_pos]] <- data.frame(
+  #         date = dates[j],
+  #         mu = NA_real_,
+  #         sigma = NA_real_,
+  #         sigma2 = NA_real_,
+  #         resid = NA_real_,
+  #         z = NA_real_,
+  #         refit_date = dates[t_refit]
+  #       )
+  #       out_pos <- out_pos + 1
+  #     }
+  #     next
+  #   }
+  # 
+  #   mu_fc <- as.numeric(fitted(fc))
+  #   sigma_fc <- as.numeric(sigma(fc))
+  # 
+  #   for (h in seq_along(forecast_idx)) {
+  #     j <- forecast_idx[h]
+  #     r_next <- ret[j]
+  #     mu_h <- mu_fc[h]
+  #     sigma_h <- sigma_fc[h]
+  #     sigma2_h <- sigma_h^2
+  # 
+  #     z_next <- if (is.na(sigma_h) || sigma_h <= 0) {
+  #       NA_real_
+  #     } else {
+  #       (r_next - mu_h) / sigma_h
+  #     }
+  # 
+  #     out_list[[out_pos]] <- data.frame(
+  #       date = dates[j],
+  #       mu = mu_h,
+  #       sigma = sigma_h,
+  #       sigma2 = sigma2_h,
+  #       resid = r_next - mu_h,
+  #       z = z_next,
+  #       refit_date = dates[t_refit]
+  #     )
+  #     out_pos <- out_pos + 1
+  #   }
+  # }
+
+  # out <- do.call(rbind, out_list)
+  # out <- out[order(out$date), ]
+  # rownames(out) <- NULL
+  # out
 }
 
 run_all_garch_monthly <- function(data, date_col = "date", init_window = 504) {
@@ -936,6 +994,7 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
                             S_builder = NULL,
                             S_update_freq = c("monthly", "quarterly", "yearly", "biyearly"),
                             trace = TRUE) {
+  frozen_ab <- NULL
   Z_block <- as.matrix(Z_block)
   SIGMA_block <- as.matrix(SIGMA_block)
   dates_block <- as.Date(dates_block)
@@ -1028,14 +1087,36 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
     cat("Min eigenvalue of S:",
         min(eigen(S_dbg, symmetric = TRUE, only.values = TRUE)$values), "\n")
     cat("============================\n")
-
-    dcc_fit <- tryCatch(
-      estimate_dcc(Z_insample, S_target),
-      error = function(e) {
-        cat("DCC failed at", as.character(blk$refit_date), ":", e$message, "\n")
-        return(NULL)
+    
+    # Comment out to try freezing estimates 
+    # dcc_fit <- tryCatch(
+    #   estimate_dcc(Z_insample, S_target),
+    #   error = function(e) {
+    #     cat("DCC failed at", as.character(blk$refit_date), ":", e$message, "\n")
+    #     return(NULL)
+    #   }
+    # )
+    if (is.null(frozen_ab)) {
+      dcc_fit <- tryCatch(
+        estimate_dcc(Z_insample, S_target),
+        error = function(e) {
+          cat("DCC failed at", as.character(blk$refit_date), ":", e$message, "\n")
+          return(NULL)
+        }
+      )
+      
+      if (!is.null(dcc_fit)) {
+        frozen_ab <- c(dcc_fit$a, dcc_fit$b)
       }
-    )
+      
+    } else {
+      dcc_fit <- list(
+        a = frozen_ab[1],
+        b = frozen_ab[2],
+        S = S_target,
+        Q_T = dcc_filter(Z_insample, frozen_ab[1], frozen_ab[2], S_target)$Q_T
+      )
+    }
 
     if (is.null(dcc_fit)) {
       out[[i]] <- list(
@@ -1089,8 +1170,20 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
   out
 }
 
-# Subset test for time check
-test_data_cmp <- managed_portfolios[1:1100, c("date", names(managed_portfolios)[2:9])]
+# Subset test for time check (fama french, momentum and random)
+test_data_cmp <- managed_portfolios %>%
+  select(
+    date,
+    mkt_excess,
+    smb,
+    hml,
+    rmw,
+    cma,
+    mom,
+    agric,     
+    food       
+  ) %>%
+  slice(1:1100)
 
 time_garch_cmp <- system.time({
   garch_cmp <- run_all_garch_monthly(
