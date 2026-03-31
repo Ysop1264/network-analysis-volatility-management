@@ -2273,3 +2273,114 @@ print(sr_diff_net_mve)
 # ========================================
 # Table creation
 # ========================================
+
+
+
+
+
+#' Function creates the Panel A of the main results table, 
+#' it contains gross mean, volatility, SR, and alphas for 
+#' both benchmarks
+#'
+#'@param returns_df Data frame with date, and returns corresponding to:
+#' equally-weighted-buy and hold (EW), mean-variance efficient (MVE) and
+#' netowrk strategy (NET)
+#'
+#'@return Panel A of the main results table
+#'
+main_results_table_panel_A <- function(returns_df){
+  
+  if(class(returns_df[[1]]) == "Date"){
+    returns_df <- returns_df[,-1]
+  }
+  
+  # Computing the input for the table 
+  gross_mean_return <- colMeans(returns_df) * 12 * 100
+  gross_volatility <- sapply(returns_df, sd) * sqrt(12) * 100
+  SR <- gross_mean_return/gross_volatility
+  alpha_BH <- c(0,0,0)
+  alpha_MVE <- c(0,0,0)
+  
+  results <- data.frame(
+    Strategy = c("BH", "MVE", "NET"),
+    Gross_mean_return = gross_mean_return,
+    Gross_volatility = gross_volatility,
+    Sharpe_ratio = SR,
+    Alpha_BH <- alpha_BH,
+    Alpha_MVE <- alpha_MVE
+  )
+  
+  
+  return(results)
+}
+
+
+#'
+#'Function creates the sub-period analysis table,
+#'it contians mean gross return, gross volatility, SR, 
+#'alphas and t-statistics
+#'
+#'@param returns_df Data frame with date, and returns corresponding to:
+#' equally-weighted-buy and hold (EW), mean-variance efficient (MVE) and
+#' netowrk strategy (NET)
+#'
+#'@return Table
+#'
+sub_period_analysis_table <- function(returns_df){
+  
+  # Setting dates for first period
+  start_date_period_1 <- as.Date("1973-01-01")
+  end_date_period_1 <- as.Date("2009-12-13")
+  returns_df_period_1 <- returns_df |> filter (date >= start_date_period_1 & date <= end_date_period_1)
+  
+  # Setting dates for second period
+  start_date_period_2 <- as.Date("2010-01-01")
+  end_date_period_2 <- as.Date("2017-12-31")
+  returns_df_period_2 <- returns_df |> filter (date >= start_date_period_2 & date <= end_date_period_2)
+  
+  # Setting dates for third period
+  start_date_period_3 <- as.Date("2018-01-01")
+  end_date_period_3 <- as.Date("2026-01-31")
+  returns_df_period_3 <- returns_df |> filter (date >= start_date_period_3 & date <= end_date_period_3)
+  
+  if(class(returns_df[[1]]) == "Date"){
+    returns_df <- returns_df[,-1]
+  }
+  
+  # Calculating gross mean returns
+  gross_mean_return_1 <- colMeans(returns_df_period_1) * 12 * 100
+  gross_mean_return_2 <- colMeans(returns_df_period_2) * 12 * 100
+  gross_mean_return_3 <- colMeans(returns_df_period_3) * 12 * 100
+  
+  # Calculating gross volaitlities
+  gross_volatility_1 <- sapply(returns_df_period_1, sd) * sqrt(12) * 100
+  gross_volatility_2 <- sapply(returns_df_period_2, sd) * sqrt(12) * 100
+  gross_volatility_3 <- sapply(returns_df_period_3, sd) * sqrt(12) * 100
+  
+  # Calculating SR's
+  SR_1 <- gross_mean_return_1/gross_volatility_1
+  SR_2 <- gross_mean_return_2/gross_volatility_2
+  SR_3 <- gross_mean_return_3/gross_volatility_3
+  
+  # Calcualting alphas BH
+  alpha_BH_1 <- c(0,0,0)
+  alpha_BH_2 <- c(0,0,0)
+  alpha_BH_3 <- c(0,0,0)
+  
+  # Calcualting alphas MVE
+  alpha_MVE_1 <- c(0,0,0)
+  alpha_MVE_2 <- c(0,0,0)
+  alpha_MVE_3 <- c(0,0,0)
+  
+  
+  results <- data.frame(
+    Period = c("1973-2010", "", "", "2010-2018", "", "", "2018-2026", "", ""),
+    Strategy = c("BH", "MVE", "NET", "BH", "MVE", "NET", "BH", "MVE", "NET"),
+    Mean = rbind(gross_mean_return_1, gross_mean_return_2, gross_mean_return_3),
+    Volatility = rbind(gross_volatility_1, gross_volatility_2, gross_volatility_3),
+    Sharpe_ratio = rbind(SR_1, SR_2, SR_3), 
+    Alpha_EW = rbind(alpha_BH_1, alpha_BH_2, alpha_BH_3), 
+    Alpha_MVE = rbind(alpha_MVE_1, alpha_MVE_2, alpha_MVE_3)
+  )
+  
+}
