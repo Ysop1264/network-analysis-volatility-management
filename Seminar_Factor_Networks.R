@@ -2230,7 +2230,30 @@ sr_diff <- sharpe_difference(
   benchmarks_returns$EW
 )
 print(sr_diff)
+# Ledoit-Wolf Sharpe ratio difference test
+lw_sharpe_test <- sharpeTesting(
+  x = benchmarks_returns$MVE_strategy_return,
+  y = benchmarks_returns$EW_return,
+  control = list(
+    type = 2,
+    hac = TRUE,
+    nBoot = 999,
+    bBoot = 1
+  )
+)
 
+lw_summary <- tibble(
+  Strategy_1 = "MVE",
+  Strategy_2 = "EW Buy-and-Hold",
+  SR_1 = lw_sharpe_test$sharpe[1],
+  SR_2 = lw_sharpe_test$sharpe[2],
+  SR_Difference = lw_sharpe_test$dsharpe,
+  t_stat = lw_sharpe_test$tstat,
+  p_value = lw_sharpe_test$pval
+)
+
+print(lw_summary)
+                          
 # Difference between NET and Buy-and-Hold 
 sr_diff_net_ew <- sharpe_difference(
   network_vs_benchmark_biyearly$net_strategy_return,
