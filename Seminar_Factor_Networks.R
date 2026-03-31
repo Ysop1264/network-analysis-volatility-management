@@ -14,6 +14,7 @@
 #install.packages("xts")
 #install.packages("zoo")
 #install.packages("igraph")
+# install.packages("PeerPerformance")
 ####
 
 library(rlang)
@@ -29,6 +30,7 @@ library(lubridate)
 library(nlshrink)
 library(rugarch)
 library(igraph)
+library(PeerPerformance)
 
 # DATA download and transformation
 start_date <- as.Date("1971-01-01")
