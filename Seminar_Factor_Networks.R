@@ -1,20 +1,20 @@
-##### Uncomment if packages not installed
-#install.packages("tidyverse")
-#install.packages("tidyfinance")
-#install.packages("scales")
-#install.packages("frenchdata")
-#install.packages("dplyr")
-#install.packages("moments")
-#install.packages("sandwich")
-#install.packages("rlang")
-#install.packages("lmtest")
-#install.packages("lubridate")
-#install.packages("nlshrink")
-#install.packages("rugarch")
-#install.packages("xts")
-#install.packages("zoo")
-#install.packages("igraph")
-#####
+#### Uncomment if packages not installed
+install.packages("tidyverse")
+install.packages("tidyfinance")
+install.packages("scales")
+install.packages("frenchdata")
+install.packages("dplyr")
+install.packages("moments")
+install.packages("sandwich")
+install.packages("rlang")
+install.packages("lmtest")
+install.packages("lubridate")
+install.packages("nlshrink")
+install.packages("rugarch")
+install.packages("xts")
+install.packages("zoo")
+install.packages("igraph")
+####
 
 library(rlang)
 library(tidyverse)
@@ -1065,7 +1065,7 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
       dates_future = blk$forecast_dates
     )
 
-    H_month <- (1/forecast_idx) * aggregate_monthly_cov(H_fc) 
+    H_month <- (1/length(blk$forecast_idx)) * aggregate_monthly_cov(H_fc) 
 
     out[[i]] <- list(
       refit_month = blk$refit_month,
@@ -1653,12 +1653,12 @@ compute_equal_weight_benchmark <- function(realized_obj, common_dates = NULL) {
 # Run for current test case
 # first 1100 obs, first 8 factors
 # =================================================
-
 factor_names_8 <- colnames(test_data_cmp[, -1, drop = FALSE])
 
 net_biyearly <- run_network_outputs(
   dcc_list = dcc_biyearly,
-  tau = sqrt(0.05),
+  # tau = sqrt(0.05),
+  tau = 0.05, 
   lambda_pos = 0.1,
   lambda_neg = 0.1,
   asset_names = factor_names_8
@@ -1844,7 +1844,6 @@ dev.off()
 # =================================================
 # Benchmarks
 # =================================================
-
 # Setting here to test the script for less managed portfolios
 #managed_portfolios <- managed_portfolios[,1:7]
 
@@ -1852,9 +1851,7 @@ dev.off()
 start_date_estimation <- as.Date("1971-01-01")
 end_date_estimation <- as.Date("1973-01-01")
 
-
 ### MVE Benchmark by Moreira and Muir (2017)
-
 # Calculating in-sample mean
 managed_portfolios_est <- managed_portfolios |> 
   filter(date >= start_date_estimation & date <= end_date_estimation)
@@ -1934,10 +1931,7 @@ EW_returns_df <- EW_returns_df |> group_by(month) |>
 MVE_returns_df <- MVE_returns_df |> filter(month > end_date_estimation)
 EW_returns_df <- EW_returns_df |> filter(month > end_date_estimation)
 
-
-
-## This is just for veryfying the performance of the benchmarks
-
+## This is just for verifying the performance of the benchmarks
 # Calculating the Sharpe Ratios
 sharpe_ratios_benchmarks <- tibble(
   Benchmark = c("EW Buy-and-Hold", "MVE"),
@@ -1950,77 +1944,92 @@ sharpe_ratios_benchmarks <- tibble(
 benchmarks_returns <- EW_returns_df |> left_join(MVE_returns_df, by = "month") 
 colnames(benchmarks_returns) <- c("month", "EW", "MVE")
 
-
-
+# Functions for getting the performance measures for network analysis 
+# calculate scaling constant c to match volatility of BH 
+vol_target <- sd(network_vs_benchmark_biyearly$EW_benchmark, na.rm=T)
+vol_strat_unscaled <- sd(network_vs_benchmark_biyearly$network_return_unscaled, na.rm=T)
+c_scaling <- vol_target / vol_strat_unscaled 
+# final network return series 
+network_vs_benchmark_biyearly <- network_vs_benchmark_biyearly %>% 
+  mutate(net_strategy_return = network_return_unscaled * c_scaling)
 
 # ====================================
 # Generating figures 
 # ====================================
-
-
 # Cumulative wealth dataframe
+# Prepare the data by joining NET returns to the benchmarks (UNCOMMENT THIS WHEN RUNNING FULL SAMPLE)
+combined_returns <- benchmarks_returns |>
+  left_join(network_vs_benchmark_biyearly |> select(date, net_strategy_return),
+            by = c("month" = "date"))
 
-cumulative_wealth_df <- benchmarks_returns |>
+# Calculate cumulative wealth
+cumulative_wealth_df <- combined_returns |>
   mutate(
     EW = cumprod(1 + EW),
-    MVE = cumprod(1 + MVE)
+    MVE = cumprod(1 + MVE),
+    NET = cumprod(1 + net_strategy_return)
   )
 
 axis <- par(lab = c(20, 8, 5))
-plot(x = cumulative_wealth_df$month, y = cumulative_wealth_df$EW, xlab = "Date", 
-     ylab = "Cumulative return", type = "l", col = "black", lwd = 1, lty = 1, ylim = c(0,60))
-y_ticks <- pretty(cumulative_wealth_df$MVE)
+max_y <- max(cumulative_wealth_df$NET, cumulative_wealth_df$MVE, na.rm = TRUE)
+plot(x = cumulative_wealth_df$month, y = cumulative_wealth_df$EW,
+     xlab = "Date", ylab = "Cumulative return",
+     type = "l", col = "black", lwd = 1, lty = 1, ylim = c(0, max_y))
+
+y_ticks <- pretty(c(0, max_y))
 abline(h = y_ticks, col = "grey85", lty = 1)
 lines(x = cumulative_wealth_df$month, y = cumulative_wealth_df$EW, col = "black", lwd = 1)
-lines(x = cumulative_wealth_df$month, y = cumulative_wealth_df$MVE , col = "blue", lty = 2)
-legend("topleft", legend = c("BH", "MVE", "NET"), col = c("black", "blue", "red"), lty = c(1,2, 3), lwd = 2, bty = "n", cex = 0.8)
-
+lines(x = cumulative_wealth_df$month, y = cumulative_wealth_df$MVE, col = "blue", lty = 2, lwd = 1.5)
+lines(x = cumulative_wealth_df$month, y = cumulative_wealth_df$NET, col = "red", lty = 3, lwd = 2)
+legend("topleft", legend = c("BH", "MVE", "NET"),
+       col = c("black", "blue", "red"), lty = c(1, 2, 3),
+       lwd = 2, bty = "n", cex = 0.8)
 
 # Rolling Sharpe Ratio
 rolling_SR_df <- data.frame(
-  date = benchmarks_returns$month[12:dim(benchmarks_returns)[1]],
+  date = combined_returns$month[12:nrow(combined_returns)],
   SR_EW = NA_real_,
-  SR_MVE = NA_real_
+  SR_MVE = NA_real_,
+  SR_NET = NA_real_
 )
 
-for(i in 12: dim(benchmarks_returns)[1]){
-  rolling_SR_df$SR_EW[i-11] <- mean(benchmarks_returns$EW[(i-11):i])/sd(benchmarks_returns$EW[(i-11):i]) * sqrt(12)
-  rolling_SR_df$SR_MVE[i-11] <- mean(benchmarks_returns$MVE[(i-11):i])/sd(benchmarks_returns$MVE[(i-11):i]) * sqrt(12)
+for(i in 12:nrow(combined_returns)){
+  rolling_SR_df$SR_EW[i-11]  <- mean(combined_returns$EW[(i-11):i]) / sd(combined_returns$EW[(i-11):i]) * sqrt(12)
+  rolling_SR_df$SR_MVE[i-11] <- mean(combined_returns$MVE[(i-11):i]) / sd(combined_returns$MVE[(i-11):i]) * sqrt(12)
+  rolling_SR_df$SR_NET[i-11] <- mean(combined_returns$net_strategy_return[(i-11):i]) / sd(combined_returns$net_strategy_return[(i-11):i]) * sqrt(12) # Added this
 }
 
-
-plot(x = rolling_SR_df$date, y = rolling_SR_df$SR_EW, type = "l", xlab = "Date", ylab = "Rolling SR", lty = 1, col = "black")
-y_ticks <- pretty( rolling_SR_df$SR_EW)
+plot(x = rolling_SR_df$date, y = rolling_SR_df$SR_EW, type = "l", xlab = "Date", ylab = "Rolling SR", lty = 1, col = "black", ylim = range(c(rolling_SR_df$SR_EW, rolling_SR_df$SR_MVE, rolling_SR_df$SR_NET), na.rm = TRUE))
+y_ticks <- pretty(rolling_SR_df$SR_EW)
 abline(h = y_ticks, col = "grey85", lty = 1)
-lines(x = rolling_SR_df$date, y = rolling_SR_df$SR_EW, type = "l", col = "black", lty = 1)
+lines(x = rolling_SR_df$date, y = rolling_SR_df$SR_EW, col = "black", lty = 1)
 lines(x = rolling_SR_df$date, y = rolling_SR_df$SR_MVE, col = "blue", lty = 2)
+lines(x = rolling_SR_df$date, y = rolling_SR_df$SR_NET, col = "red", lty = 3, lwd = 2) # Added the red line
 legend("topright", legend = c("BH", "MVE", "NET"), col = c("black", "blue", "red"), lty = c(1,2, 3), bty = "n", lwd = 2, cex = 0.8)
 
-# Drowndown figure
+# Drawdown figure
 drawdown_df <- cumulative_wealth_df |>
   arrange(month) |>
   mutate(
     EW_drawdown = EW / cummax(EW) - 1,
-    MVE_drawdown = MVE / cummax(MVE) - 1
+    MVE_drawdown = MVE / cummax(MVE) - 1,
+    NET_drawdown = NET / cummax(NET) - 1 # Added this
   )
 
-
-plot(x = drawdown_df$month, y = drawdown_df$EW_drawdown, type = "l", ylim = c(-0.6,0), 
+plot(x = drawdown_df$month, y = drawdown_df$EW_drawdown, type = "l", ylim = c(-0.6, 0), 
      xlab = "Date", ylab = "Drawdown")
 y_ticks <- pretty(drawdown_df$EW_drawdown)
 abline(h = y_ticks, col = "grey85", lty = 1)
-lines(x = drawdown_df$month, y = drawdown_df$EW_drawdown, type = "l", col = "black", lty = 1)
-lines(x = drawdown_df$month, y = drawdown_df$MVE_drawdown, type = "l", col = "blue", lty = 2)
+
+lines(x = drawdown_df$month, y = drawdown_df$EW_drawdown, col = "black", lty = 1)
+lines(x = drawdown_df$month, y = drawdown_df$MVE_drawdown, col = "blue", lty = 2)
+lines(x = drawdown_df$month, y = drawdown_df$NET_drawdown, col = "red", lty = 3, lwd = 2) # Added the red line
+
 legend("bottomright", legend = c("BH", "MVE", "NET"), col = c("black", "blue", "red"), lty = c(1,2, 3), bty = "n", lwd = 2, cex = 0.8)
-
-
 
 # ================================================
 # Performance evaluation and alpha testing
 # ================================================
-
-
-
 #scale = 12 for monthly data -> annualising the metrics
 # scale = 252 for daily 
 annualized_mean <- function(r, scale = 12) {
@@ -2063,13 +2072,15 @@ performance_summary <- function(r, turnover = NULL, scale = 12) {
     NetSharpe = ifelse(is.null(turnover), NA, round(compute_SR(compute_net_returns(r, turnover),4), scale))
   )
 }
-perf_EW <- performance_summary(benchmarks_monthly$EW)
-perf_MVE <- performance_summary(benchmarks_monthly$MVE)
+perf_EW  <- performance_summary(benchmarks_returns$EW)
+perf_MVE <- performance_summary(benchmarks_returns$MVE)
+perf_NET <- performance_summary(network_vs_benchmark_biyearly$net_strategy_return)
 
 #just to make a nice table with the different strategy
 performance_table <- bind_rows(
   `EW Buy-and-Hold` = perf_EW,
   `MVE Vol-Managed` = perf_MVE,
+  `NET Strategy`    = perf_NET,
   .id = "Strategy"
 )
 
@@ -2100,17 +2111,46 @@ alpha_vs_EW <- alpha_test(
 )
 print(alpha_vs_EW)
 
+alpha_NET_vs_BH <- alpha_test(
+  strategy_ret = network_vs_benchmark_biyearly$net_strategy_return,
+  benchmark_ret = network_vs_benchmark_biyearly$EW_benchmark
+)
+
+print(alpha_NET_vs_BH)
+
+# Make sure MVE is in the comparison table
+network_vs_benchmark_biyearly <- network_vs_benchmark_biyearly %>%
+  left_join(benchmarks_returns %>% select(month, MVE), by = c("date" = "month"))
+
+alpha_NET_vs_MVE <- alpha_test(
+  strategy_ret = network_vs_benchmark_biyearly$net_strategy_return,
+  benchmark_ret = network_vs_benchmark_biyearly$MVE 
+)
+
+print(alpha_NET_vs_MVE)
+
 sharpe_difference <- function(r1, r2, scale = 12) {
   compute_SR(r1, scale) - compute_SR(r2, scale)
 }
 sr_diff <- sharpe_difference(
-  benchmarks_monthly$MVE,
-  benchmarks_monthly$EW
+  benchmarks_returns$MVE,
+  benchmarks_returns$EW
 )
-
 print(sr_diff)
 
+# Difference between NET and Buy-and-Hold 
+sr_diff_net_ew <- sharpe_difference(
+  network_vs_benchmark_biyearly$net_strategy_return,
+  network_vs_benchmark_biyearly$EW_benchmark
+)
+print(sr_diff_net_ew)
 
+# Difference between NET and MVE 
+sr_diff_net_mve <- sharpe_difference(
+  network_vs_benchmark_biyearly$net_strategy_return,
+  network_vs_benchmark_biyearly$MVE
+)
+print(sr_diff_net_mve)
 
 # ========================================
 # Table creation
