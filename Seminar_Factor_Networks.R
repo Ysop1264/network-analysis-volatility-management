@@ -1065,7 +1065,7 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
       dates_future = blk$forecast_dates
     )
 
-    H_month <- aggregate_monthly_cov(H_fc)
+    H_month <- (1/forecast_idx) * aggregate_monthly_cov(H_fc) 
 
     out[[i]] <- list(
       refit_month = blk$refit_month,
@@ -1108,50 +1108,36 @@ time_blocks_cmp <- system.time({
 
 print(time_blocks_cmp)
 
-time_dcc_quarterly <- system.time({
-  dcc_quarterly <- run_dcc_monthly(
-    Z_block = blocks_cmp$Z,
-    SIGMA_block = blocks_cmp$SIGMA,
-    dates_block = as.Date(rownames(blocks_cmp$Z)),
-    min_corr_window = 252,
-    rolling_window = 504,
-    S_builder = build_nlshrink_target,
-    S_update_freq = "quarterly",
-    trace = TRUE
-  )
-})
+# DONT RUN (NOT NEEDED)
+# time_dcc_quarterly <- system.time({
+#  dcc_quarterly <- run_dcc_monthly(
+#    Z_block = blocks_cmp$Z,
+#    SIGMA_block = blocks_cmp$SIGMA,
+#    dates_block = as.Date(rownames(blocks_cmp$Z)),
+#    min_corr_window = 252,
+#    rolling_window = 504,
+#    S_builder = build_nlshrink_target,
+#    S_update_freq = "quarterly",
+#    trace = TRUE
+#  )
+#})
 
-print(time_dcc_quarterly)
+#print(time_dcc_quarterly)
 
-time_dcc_yearly <- system.time({
-  dcc_yearly <- run_dcc_monthly(
-    Z_block = blocks_cmp$Z,
-    SIGMA_block = blocks_cmp$SIGMA,
-    dates_block = as.Date(rownames(blocks_cmp$Z)),
-    min_corr_window = 252,
-    rolling_window = 504,
-    S_builder = build_nlshrink_target,
-    S_update_freq = "yearly",
-    trace = TRUE
-  )
-})
+#time_dcc_yearly <- system.time({
+#  dcc_yearly <- run_dcc_monthly(
+#    Z_block = blocks_cmp$Z,
+#    SIGMA_block = blocks_cmp$SIGMA,
+#    dates_block = as.Date(rownames(blocks_cmp$Z)),
+#    min_corr_window = 252,
+#    rolling_window = 504,
+#    S_builder = build_nlshrink_target,
+#    S_update_freq = "yearly",
+#    trace = TRUE
+#  )
+#})
 
-print(time_dcc_yearly)
-
-time_dcc_biyearly <- system.time({
-  dcc_biyearly <- run_dcc_monthly(
-    Z_block = blocks_cmp$Z,
-    SIGMA_block = blocks_cmp$SIGMA,
-    dates_block = as.Date(rownames(blocks_cmp$Z)),
-    min_corr_window = 252,
-    rolling_window = 504,
-    S_builder = build_nlshrink_target,
-    S_update_freq = "biyearly",
-    trace = TRUE
-  )
-})
-
-print(time_dcc_biyearly)
+#print(time_dcc_yearly)
 
 time_dcc_biyearly <- system.time({
   dcc_biyearly <- run_dcc_monthly(
@@ -1168,147 +1154,147 @@ time_dcc_biyearly <- system.time({
 
 print(time_dcc_biyearly)
 
-get_dcc_param_summary <- function(dcc_obj) {
-  a_vals <- sapply(dcc_obj, function(x) x$a)
-  b_vals <- sapply(dcc_obj, function(x) x$b)
 
-  c(
-    mean_a = mean(a_vals, na.rm = TRUE),
-    mean_b = mean(b_vals, na.rm = TRUE),
-    mean_ab = mean(a_vals + b_vals, na.rm = TRUE),
-    median_a = median(a_vals, na.rm = TRUE),
-    median_b = median(b_vals, na.rm = TRUE),
-    median_ab = median(a_vals + b_vals, na.rm = TRUE)
-  )
-}
+# get_dcc_param_summary <- function(dcc_obj) {
+#   a_vals <- sapply(dcc_obj, function(x) x$a)
+#   b_vals <- sapply(dcc_obj, function(x) x$b)
 
-cmp_table <- rbind(
-  quarterly = c(
-    elapsed = time_dcc_quarterly["elapsed"],
-    get_dcc_param_summary(dcc_quarterly)
-  ),
-  yearly = c(
-    elapsed = time_dcc_yearly["elapsed"],
-    get_dcc_param_summary(dcc_yearly)
-  ),
-  biyearly = c(
-    elapsed = time_dcc_biyearly["elapsed"],
-    get_dcc_param_summary(dcc_biyearly)
-  )
-)
+#   c(
+#     mean_a = mean(a_vals, na.rm = TRUE),
+#     mean_b = mean(b_vals, na.rm = TRUE),
+#     mean_ab = mean(a_vals + b_vals, na.rm = TRUE),
+#     median_a = median(a_vals, na.rm = TRUE),
+#     median_b = median(b_vals, na.rm = TRUE),
+#     median_ab = median(a_vals + b_vals, na.rm = TRUE)
+#   )
+# }
 
-print(round(cmp_table, 4))
+# cmp_table <- rbind(
+#   quarterly = c(
+#     elapsed = time_dcc_quarterly["elapsed"],
+#     get_dcc_param_summary(dcc_quarterly)
+#   ),
+#   yearly = c(
+#     elapsed = time_dcc_yearly["elapsed"],
+#     get_dcc_param_summary(dcc_yearly)
+#   ),
+#   biyearly = c(
+#     elapsed = time_dcc_biyearly["elapsed"],
+#     get_dcc_param_summary(dcc_biyearly)
+#   )
+# )
 
-average_H_month_matrix <- function(dcc_res) {
-  H_all <- lapply(dcc_res, `[[`, "H_month")
-  n <- nrow(H_all[[1]])
-  H_avg <- matrix(0, n, n)
+# print(round(cmp_table, 4))
 
-  for (k in seq_along(H_all)) {
-    H_avg <- H_avg + H_all[[k]]
-  }
+# average_H_month_matrix <- function(dcc_res) {
+#   H_all <- lapply(dcc_res, `[[`, "H_month")
+#   n <- nrow(H_all[[1]])
+#   H_avg <- matrix(0, n, n)
 
-  H_avg / length(H_all)
-}
+#   for (k in seq_along(H_all)) {
+#     H_avg <- H_avg + H_all[[k]]
+#   }
 
-H_q <- average_H_month_matrix(dcc_quarterly)
-H_y <- average_H_month_matrix(dcc_yearly)
-H_b <- average_H_month_matrix(dcc_biyearly)
+#   H_avg / length(H_all)
+# }
 
-frobenius_dist <- function(A, B) {
-  sqrt(sum((A - B)^2))
-}
+# H_q <- average_H_month_matrix(dcc_quarterly)
+# H_y <- average_H_month_matrix(dcc_yearly)
+# H_b <- average_H_month_matrix(dcc_biyearly)
 
-comparison_H <- c(
-  q_vs_y = frobenius_dist(H_q, H_y),
-  q_vs_b = frobenius_dist(H_q, H_b),
-  y_vs_b = frobenius_dist(H_y, H_b)
-)
+# frobenius_dist <- function(A, B) {
+#   sqrt(sum((A - B)^2))
+# }
 
-print(comparison_H)
+# comparison_H <- c(
+#   q_vs_y = frobenius_dist(H_q, H_y),
+#   q_vs_b = frobenius_dist(H_q, H_b),
+#   y_vs_b = frobenius_dist(H_y, H_b)
+# )
 
-monthwise_H_diff <- function(dcc1, dcc2) {
-  stopifnot(length(dcc1) == length(dcc2))
+# print(comparison_H)
 
-  sapply(seq_along(dcc1), function(i) {
-    H1 <- dcc1[[i]]$H_month
-    H2 <- dcc2[[i]]$H_month
-    sqrt(sum((H1 - H2)^2))
-  })
-}
+# monthwise_H_diff <- function(dcc1, dcc2) {
+#   stopifnot(length(dcc1) == length(dcc2))
 
-diff_q_y <- monthwise_H_diff(dcc_quarterly, dcc_yearly)
-diff_q_b <- monthwise_H_diff(dcc_quarterly, dcc_biyearly)
-diff_y_b <- monthwise_H_diff(dcc_yearly, dcc_biyearly)
+#   sapply(seq_along(dcc1), function(i) {
+#     H1 <- dcc1[[i]]$H_month
+#     H2 <- dcc2[[i]]$H_month
+#     sqrt(sum((H1 - H2)^2))
+#   })
+# }
 
-summary(diff_q_y)
-summary(diff_q_b)
-summary(diff_y_b)
+# diff_q_y <- monthwise_H_diff(dcc_quarterly, dcc_yearly)
+# diff_q_b <- monthwise_H_diff(dcc_quarterly, dcc_biyearly)
+# diff_y_b <- monthwise_H_diff(dcc_yearly, dcc_biyearly)
 
-# Tables and graphs
-print(round(cmp_table, 4))
+# summary(diff_q_y)
+# summary(diff_q_b)
+# summary(diff_y_b)
 
-comparison_table <- data.frame(
-  Comparison = c("Quarterly vs Yearly", "Quarterly vs Biyearly", "Yearly vs Biyearly"),
-  Frobenius_Distance = as.numeric(comparison_H)
-)
+# # Tables and graphs
+# print(round(cmp_table, 4))
 
-print(comparison_table)
+# comparison_table <- data.frame(
+#   Comparison = c("Quarterly vs Yearly", "Quarterly vs Biyearly", "Yearly vs Biyearly"),
+#   Frobenius_Distance = as.numeric(comparison_H)
+# )
 
-diff_summary <- rbind(
-  q_vs_y = summary(diff_q_y),
-  q_vs_b = summary(diff_q_b),
-  y_vs_b = summary(diff_y_b)
-)
+# print(comparison_table)
 
-print(round(diff_summary, 3))
+# diff_summary <- rbind(
+#   q_vs_y = summary(diff_q_y),
+#   q_vs_b = summary(diff_q_b),
+#   y_vs_b = summary(diff_y_b)
+# )
 
-extract_ab <- function(dcc_obj) {
-  data.frame(
-    date = as.Date(names(dcc_obj)),
-    a = sapply(dcc_obj, function(x) x$a),
-    b = sapply(dcc_obj, function(x) x$b),
-    ab = sapply(dcc_obj, function(x) x$a + x$b)
-  )
-}
+# print(round(diff_summary, 3))
 
-df_q <- extract_ab(dcc_quarterly)
-df_y <- extract_ab(dcc_yearly)
-df_b <- extract_ab(dcc_biyearly)
+# extract_ab <- function(dcc_obj) {
+#   data.frame(
+#     date = as.Date(names(dcc_obj)),
+#     a = sapply(dcc_obj, function(x) x$a),
+#     b = sapply(dcc_obj, function(x) x$b),
+#     ab = sapply(dcc_obj, function(x) x$a + x$b)
+#   )
+# }
 
-png("dcc_persistence.png", width = 800, height = 600)
-plot(df_q$date, df_q$ab, type = "l", lwd = 2,
-     main = "DCC Persistence (a+b)",
-     ylab = "a+b", xlab = "")
-lines(df_y$date, df_y$ab, col = 2, lwd = 2)
-lines(df_b$date, df_b$ab, col = 4, lwd = 2)
-legend("topright",
-       legend = c("Quarterly", "Yearly", "Biyearly"),
-       col = c(1,2,4), lwd = 2)
-dev.off()
+# df_q <- extract_ab(dcc_quarterly)
+# df_y <- extract_ab(dcc_yearly)
+# df_b <- extract_ab(dcc_biyearly)
 
-png("cov_diff.png", width = 800, height = 800)
-plot(diff_q_y, type = "l", lwd = 2,
-     main = "Monthly Covariance Differences",
-     ylab = "Frobenius Distance", xlab = "Month")
-lines(diff_q_b, col = 2, lwd = 2)
-lines(diff_y_b, col = 4, lwd = 2)
-legend("topright",
-       legend = c("Q vs Y", "Q vs B", "Y vs B"),
-       col = c(1,2,4), lwd = 2)
-dev.off()
+# png("dcc_persistence.png", width = 800, height = 600)
+# plot(df_q$date, df_q$ab, type = "l", lwd = 2,
+#      main = "DCC Persistence (a+b)",
+#      ylab = "a+b", xlab = "")
+# lines(df_y$date, df_y$ab, col = 2, lwd = 2)
+# lines(df_b$date, df_b$ab, col = 4, lwd = 2)
+# legend("topright",
+#        legend = c("Quarterly", "Yearly", "Biyearly"),
+#        col = c(1,2,4), lwd = 2)
+# dev.off()
 
-png("mon_by_mon_diff.png", width = 800, height = 800)
-hist(diff_q_y, breaks = 20, col = "gray",
-     main = "Distribution of Covariance Differences (Q vs Y)",
-     xlab = "Frobenius Distance")
-dev.off()
+# png("cov_diff.png", width = 800, height = 800)
+# plot(diff_q_y, type = "l", lwd = 2,
+#      main = "Monthly Covariance Differences",
+#      ylab = "Frobenius Distance", xlab = "Month")
+# lines(diff_q_b, col = 2, lwd = 2)
+# lines(diff_y_b, col = 4, lwd = 2)
+# legend("topright",
+#        legend = c("Q vs Y", "Q vs B", "Y vs B"),
+#        col = c(1,2,4), lwd = 2)
+# dev.off()
+
+# png("mon_by_mon_diff.png", width = 800, height = 800)
+# hist(diff_q_y, breaks = 20, col = "gray",
+#      main = "Distribution of Covariance Differences (Q vs Y)",
+#      xlab = "Frobenius Distance")
+# dev.off()
 
 head(dcc_biyearly)
 
 # Adjacency matrix construction 
 # @param sigma_hat is the forecasted covariance matrix 
-# @param tau is the threshold (0.1,0.5)
 # @return List with partial correlations and the adjacency matrix
 adjacency_matrix <- function(sigma_hat, tau = 0.05, ridge = 1e-6,
                              use_correlation = TRUE) {
