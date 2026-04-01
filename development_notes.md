@@ -48,3 +48,5 @@ Kornel (18:00): Updated the Performance measures: annualized some values and cha
 Kornel (21:30): Change that the 'target' for optimal MVE weights is that they sum up to one, I will explain in the appendix why in more deteil that it already is
 
 30/03/2026 - Yadhu (05:25): Changed some parts of our GARCH calculation. Estimated through t-distribution because our forecasts have fat tails. We can always discuss and revert back to normal though. Sorry for the long layoff, got busy with family stuff
+
+01/04/2026 - I found a package for estimation of DCC-NL and have been trying to improve/rewrite some of the network analysis to make it quicker. I have added the file 'seminar_network_analysis_trial.R', for now it does not run at all, but I have defined the main functions (I am trying to split it to as many seperate functions to keep purpose of each funvtion completely seperate). I need to define two more functions for it to work, something along: run_one_month_forecast(...) and run_model(...), I might be able to use some of the Yadhu main functions, but will take a look. For now lets run the old code and I am going to try to continou to maek this quicker. 
