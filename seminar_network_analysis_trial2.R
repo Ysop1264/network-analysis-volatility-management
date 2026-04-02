@@ -189,15 +189,17 @@ graph_annualized_returns <- function(returns_df){
 garch_estimate_single <- function(
     returns,
     est_window = 504,
-    distribution = "norm",
+    distribution = "std",
     garch_order = c(1,1),
     arma_order = c(0,0)
 ){
   
-  
   # Making sure of the form of returns and dates
   dates = as.Date(returns[[1]])
   returns <- as.numeric(returns[[2]])
+
+  # Scaling returns
+  returns <- 100 * returns
   
   # Critical checks for estimating GARCH model
   if(length(returns) < est_window){
@@ -365,36 +367,64 @@ estimate_dcc_parameters <- function(dcc_inputs, target_C = NULL) {
     message("Falling back to manual DCC estimation with NL target...")
     NULL
   })
+
+  if (!is.null(dcc_fit)) {
+    cat("\n===== xdcclarge object structure =====\n")
+    print(class(dcc_fit))
+    print(names(dcc_fit))
+    str(dcc_fit, max.level = 2)
+    cat("======================================\n")
+    }
   
   if (!is.null(dcc_fit)) {
-    alpha_hat <- dcc_fit$a
-    beta_hat  <- dcc_fit$b
+    alpha_hat <- NULL
+     beta_hat  <- NULL
 
-    # Fallback if xdcclarge stores parameters differently
-    if (is.null(alpha_hat) || length(alpha_hat) != 1 || !is.finite(alpha_hat) ||
-        is.null(beta_hat)  || length(beta_hat)  != 1 || !is.finite(beta_hat)) {
-    
-      if (!is.null(dcc_fit$par) && length(dcc_fit$par) >= 2) {
-        alpha_hat <- as.numeric(dcc_fit$par[1])
-        beta_hat  <- as.numeric(dcc_fit$par[2])
-      } else if (!is.null(dcc_fit$para) && length(dcc_fit$para) >= 2) {
-        alpha_hat <- as.numeric(dcc_fit$para[1])
-        beta_hat  <- as.numeric(dcc_fit$para[2])
-      } else {
+    # 1. Direct slots, if they exist
+    if (!is.null(dcc_fit$a) && !is.null(dcc_fit$b) &&
+        length(dcc_fit$a) == 1 && length(dcc_fit$b) == 1 &&
+        is.finite(dcc_fit$a) && is.finite(dcc_fit$b)) {
+            alpha_hat <- as.numeric(dcc_fit$a)
+            beta_hat  <- as.numeric(dcc_fit$b)
+        }
+
+     # 2. Top-level par, if it exists
+    if ((is.null(alpha_hat) || is.null(beta_hat)) &&
+        !is.null(dcc_fit$par) && length(dcc_fit$par) >= 2) {
+            alpha_hat <- as.numeric(dcc_fit$par[1])
+            beta_hat  <- as.numeric(dcc_fit$par[2])
+        }     
+
+    # 3. result$par, which is what your object actually uses
+    if ((is.null(alpha_hat) || is.null(beta_hat)) &&
+        !is.null(dcc_fit$result) &&
+        !is.null(dcc_fit$result$par) &&
+        length(dcc_fit$result$par) >= 2) {
+            alpha_hat <- as.numeric(dcc_fit$result$par[1])
+            beta_hat  <- as.numeric(dcc_fit$result$par[2])
+        }     
+
+    # 4. para, just in case
+    if ((is.null(alpha_hat) || is.null(beta_hat)) &&
+        !is.null(dcc_fit$para) && length(dcc_fit$para) >= 2) {
+            alpha_hat <- as.numeric(dcc_fit$para[1])
+            beta_hat  <- as.numeric(dcc_fit$para[2])
+        }
+
+    if (is.null(alpha_hat) || is.null(beta_hat) ||
+        length(alpha_hat) != 1 || length(beta_hat) != 1 ||
+        !is.finite(alpha_hat) || !is.finite(beta_hat)) {
         message("xdcclarge returned object, but could not extract scalar alpha/beta.")
         message("Falling back to manual DCC estimation with NL target...")
         dcc_fit <- NULL
-      }
     }
 
     if (!is.null(dcc_fit)) {
-      if (!is.null(dcc_fit$C)) {
-        target_used <- dcc_fit$C
-      } else if (!is.null(target_C)) {
+        if (!is.null(target_C)) {
         target_used <- target_C
-      } else {
+        } else {
         target_used <- create_target_matrix(Z_std)
-      }
+        }
 
     return(list(
       alpha = as.numeric(alpha_hat),
@@ -492,20 +522,6 @@ estimate_dcc_parameters <- function(dcc_inputs, target_C = NULL) {
 #' @return last estimated Q
 #'
 dcc_path <- function(alpha, beta, target_C, residuals_dcc, est_window){
-  # Indexing was off by one (added alternative below)
-  # output_Q_list <- list()
-  # for (i in 1:est_window){
-    
-  #   if(i == 1){
-  #     output_Q_list[[i]] <- target_C
-  #   } else {
-  #     output_Q_list[[i]] <- (1-alpha-beta) * target_C + alpha * tcrossprod(as.matrix(residuals_dcc[i-1, ])) +
-  #       beta * output_Q_list[[i-1]]
-  #   }
-    
-  # }
-  
-  # Q <- output_Q_list[[est_window]]
   alpha <- as.numeric(alpha)
   beta  <- as.numeric(beta)
   target_C <- as.matrix(target_C)
@@ -518,27 +534,17 @@ dcc_path <- function(alpha, beta, target_C, residuals_dcc, est_window){
 
   Q_prev <- target_C
 
-  for(i in 1:est_window){
-    zlag <- as.numeric(residuals_dcc[i, ])
+  if (est_window <= 1) return(Q_prev)
+
+  for(i in 2:est_window){
+    zlag <- as.numeric(residuals_dcc[i - 1, ])
     zlag[!is.finite(zlag)] <- 0
-  
-    if (length(zlag) != nrow(target_C)) {
-    stop("zlag dimension mismatch in dcc_path")
-    }
-  
+
     zz <- tcrossprod(zlag)
-
-    if (!all(dim(zz) == dim(target_C))) {
-      stop("tcrossprod(zlag) dimension mismatch")
-    }
-
     Q_prev <- (1 - alpha - beta) * target_C + alpha * zz + beta * Q_prev
-
-    print(dim(Q_prev))
-    print(class(Q_prev))
-  
-    Q_prev <- (Q_prev + t(Q_prev)) / 2  # keep symmetric
+    Q_prev <- (Q_prev + t(Q_prev)) / 2
   }
+
   return(Q_prev)
 }
 
@@ -547,7 +553,7 @@ dcc_path <- function(alpha, beta, target_C, residuals_dcc, est_window){
 # Implements Eq. 6 in the proposal
 # @param covariance_matricies list of daily forecasted matricies in the month
 dcc_aggregate_daily_to_monthly <- function(covariance_matricies){
-  monthly_covariance_matrix <- as.matrix(Reduce('+', covariance_matricies)/ length(covariance_matricies))
+  monthly_covariance_matrix <- as.matrix(Reduce('+', covariance_matricies))
 }
 
 
@@ -585,7 +591,7 @@ dcc_forecast_monthly <- function(alpha, beta, final_Q, target_C, residuals_dcc, 
   }
   
   forecasted_monthly_cov_mat <- dcc_aggregate_daily_to_monthly(output_H)
-  
+  return(forecasted_monthly_cov_mat)
 }
 
 
@@ -977,11 +983,8 @@ run_dcc_network_monthly <- function(managed_portfolios,
       )
 
       print(dcc_est$alpha)
-      print(length(dcc_est$alpha))
       print(dcc_est$beta)
-      print(length(dcc_est$beta))
-      print(class(dcc_est$target_C))
-      print(dim(dcc_est$target_C))
+      print(dcc_est$method)
       
       if (is.null(dcc_est)) {
         out[[i]] <- list(refit_date = blk$refit_date, H_month = NULL)
@@ -1076,6 +1079,7 @@ run_dcc_network_monthly <- function(managed_portfolios,
     
     # Step 9: Network construction
     sigma_vec <- sqrt(pmax(diag(H_month), 0))
+    print(summary(sigma_vec))
     names(sigma_vec) <- asset_names
     
     adj <- adjacency_matrix(
@@ -1218,8 +1222,9 @@ test_result$summary
 test_result$network_vs_benchmark
 head(test_result$w_tilde)
 head(test_result$penalty)
+rowSums(abs(test_result$w_tilde))
 
-# Run for full sample
+# # Run for full sample
 cat("Rows in full sample:", nrow(managed_portfolios), "\n")
 cat("Number of assets/factors:", ncol(managed_portfolios) - 1, "\n")
 
@@ -1253,12 +1258,12 @@ network_vs_benchmark_all <- network_vs_benchmark_all %>%
   mutate(net_strategy_return = network_return_unscaled * c_scaling)
 
 # inspect
-# net_results_full$summary
-# head(net_results_full$w_tilde)
-# head(net_results_full$penalty)
-# head(net_results_full$spillover_pos)
-# head(net_results_full$spillover_neg)
-# network_vs_benchmark_all
+net_results_full$summary
+head(net_results_full$w_tilde)
+head(net_results_full$penalty)
+head(net_results_full$spillover_pos)
+head(net_results_full$spillover_neg)
+network_vs_benchmark_all
 
 
 # =================================================
