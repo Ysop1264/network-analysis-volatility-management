@@ -380,7 +380,7 @@ estimate_dcc_parameters <- function(dcc_inputs, target_C = NULL) {
     alpha_hat <- NULL
      beta_hat  <- NULL
 
-    # 1. Direct slots, if they exist
+    # Direct slots, if they exist
     if (!is.null(dcc_fit$a) && !is.null(dcc_fit$b) &&
         length(dcc_fit$a) == 1 && length(dcc_fit$b) == 1 &&
         is.finite(dcc_fit$a) && is.finite(dcc_fit$b)) {
@@ -388,14 +388,14 @@ estimate_dcc_parameters <- function(dcc_inputs, target_C = NULL) {
             beta_hat  <- as.numeric(dcc_fit$b)
         }
 
-     # 2. Top-level par, if it exists
+     # Top-level par, if it exists
     if ((is.null(alpha_hat) || is.null(beta_hat)) &&
         !is.null(dcc_fit$par) && length(dcc_fit$par) >= 2) {
             alpha_hat <- as.numeric(dcc_fit$par[1])
             beta_hat  <- as.numeric(dcc_fit$par[2])
         }     
 
-    # 3. result$par, which is what your object actually uses
+    # result$par, which is what your object actually uses
     if ((is.null(alpha_hat) || is.null(beta_hat)) &&
         !is.null(dcc_fit$result) &&
         !is.null(dcc_fit$result$par) &&
@@ -404,7 +404,7 @@ estimate_dcc_parameters <- function(dcc_inputs, target_C = NULL) {
             beta_hat  <- as.numeric(dcc_fit$result$par[2])
         }     
 
-    # 4. para, just in case
+    # para, just in case
     if ((is.null(alpha_hat) || is.null(beta_hat)) &&
         !is.null(dcc_fit$para) && length(dcc_fit$para) >= 2) {
             alpha_hat <- as.numeric(dcc_fit$para[1])
@@ -1004,26 +1004,45 @@ run_dcc_network_monthly <- function(managed_portfolios,
       }
       
     } else {
-      
-      # Re-filter with frozen params but updated in-sample residuals for Q_T
-      insample_df <- managed_portfolios[blk$insample_idx, ]
-      
-      garch_models <- tryCatch(
-        estimate_all_univariate_garch(insample_df, est_window = est_window,
-                                      distribution = distribution),
-        error = function(e) {
-          message("  GARCH refit failed, using frozen: ", e$message)
-          NULL
-        }
-      )
-      
+  
+      # Use the last jointly estimated GARCH + DCC objects until next scheduled re-estimation
+      garch_models <- frozen_garch_models
+  
       if (is.null(garch_models)) {
-        garch_models <- frozen_garch_models
+        message("  No frozen GARCH models available.")
+        out[[i]] <- list(refit_date = blk$refit_date, H_month = NULL)
+        next
       }
-      
+  
+      # Keep using the in-sample slice only for bookkeeping if needed
+      insample_df <- managed_portfolios[blk$insample_idx, ]
+  
+      # Rebuild DCC inputs from the frozen GARCH results
       dcc_inputs <- creating_inputs_for_DCC(insample_df, garch_models)
+  
       months_since_estimation <- months_since_estimation + 1
     }
+    # else {
+      
+    #   # Re-filter with frozen params but updated in-sample residuals for Q_T
+    #   insample_df <- managed_portfolios[blk$insample_idx, ]
+      
+    #   garch_models <- tryCatch(
+    #     estimate_all_univariate_garch(insample_df, est_window = est_window,
+    #                                   distribution = distribution),
+    #     error = function(e) {
+    #       message("  GARCH refit failed, using frozen: ", e$message)
+    #       NULL
+    #     }
+    #   )
+      
+    #   if (is.null(garch_models)) {
+    #     garch_models <- frozen_garch_models
+    #   }
+      
+    #   dcc_inputs <- creating_inputs_for_DCC(insample_df, garch_models)
+    #   months_since_estimation <- months_since_estimation + 1
+    # }
     
     # Step 6: Run DCC path to recover terminal Q_T
     Z_insample <- dcc_inputs$residuals_std
@@ -1204,39 +1223,43 @@ run_dcc_network_monthly <- function(managed_portfolios,
   )
 }
 
-# Test on smaller subset first
-system.time({
- test_result <- run_dcc_network_monthly(
-   managed_portfolios[1:1800, 1:8],
-   est_window = 504,
-   distribution = "norm",
-   should_reestimate = FALSE,
-   tau = 0.05,
-   lambda_pos = 0.1,
-   lambda_neg = 0.1,
-   trace = TRUE
- )
-})
+# # Test on smaller subset first
+# system.time({
+#  test_result <- run_dcc_network_monthly(
+#     managed_portfolios = managed_portfolios,
+#     est_window = 504,
+#     min_corr_window = 252,
+#     rolling_window = 504,
+#     distribution = "std",
+#     should_reestimate = TRUE,
+#     reestimation_period = 24,
+#     tau = 0.05,
+#     lambda_pos = 0.1,
+#     lambda_neg = 0.1,
+#     eps = 1e-4,
+#     trace = TRUE
+#   )
+# })
 
-test_result$summary
-test_result$network_vs_benchmark
-head(test_result$w_tilde)
-head(test_result$penalty)
-rowSums(abs(test_result$w_tilde))
+# test_result$summary
+# test_result$network_vs_benchmark
+# head(test_result$w_tilde)
+# head(test_result$penalty)
+# rowSums(abs(test_result$w_tilde))
 
-# # Run for full sample
+# Run for full sample
 cat("Rows in full sample:", nrow(managed_portfolios), "\n")
 cat("Number of assets/factors:", ncol(managed_portfolios) - 1, "\n")
 
 time_full_pipeline <- system.time({
   net_results_full <- run_dcc_network_monthly(
-    managed_portfolios,
+    managed_portfolios = managed_portfolios,
     est_window = 504,
     min_corr_window = 252,
-    rolling_window = NULL,
-    distribution = "norm",
-    should_reestimate = FALSE,
-    reestimation_period = 12,
+    rolling_window = 504,
+    distribution = "std",
+    should_reestimate = TRUE,
+    reestimation_period = 24,
     tau = 0.05,
     lambda_pos = 0.1,
     lambda_neg = 0.1,
