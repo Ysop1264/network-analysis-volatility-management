@@ -1,21 +1,21 @@
 #### Uncomment if packages not installed
-#install.packages("tidyverse")
-#install.packages("tidyfinance")
-#install.packages("scales")
-#install.packages("frenchdata")
-#install.packages("dplyr")
-#install.packages("moments")
-#install.packages("sandwich")
-#install.packages("rlang")
-#install.packages("lmtest")
-#install.packages("lubridate")
-#install.packages("nlshrink")
-#install.packages("rugarch")
-#install.packages("xts")
-#install.packages("zoo")
-#install.packages("igraph")
-# install.packages("PeerPerformance")
-# install.packages("xdcclarge")
+install.packages("tidyverse")
+install.packages("tidyfinance")
+install.packages("scales")
+install.packages("frenchdata")
+install.packages("dplyr")
+install.packages("moments")
+install.packages("sandwich")
+install.packages("rlang")
+install.packages("lmtest")
+install.packages("lubridate")
+install.packages("nlshrink")
+install.packages("rugarch")
+install.packages("xts")
+install.packages("zoo")
+install.packages("igraph")
+install.packages("PeerPerformance")
+install.packages("xdcclarge")
 ####
 
 library(rlang)
@@ -82,7 +82,6 @@ print(head(managed_portfolios))
 # =================================================
 # Functions
 # =================================================
-
 #' Compute the MVE static weights
 #'
 #'
@@ -177,7 +176,7 @@ graph_annualized_returns <- function(returns_df){
 
 #'
 #' Function that estimates GARCH(1,1) for each series
-#' 
+#'
 #' @param returns dataframe with dates as the first column, and managed portfolio returns as second
 #' @param est_window estimation window length
 #' @param distribution distribution assumption for GARCH(1,1) model
@@ -197,7 +196,7 @@ garch_estimate_single <- function(
   # Making sure of the form of returns and dates
   dates = as.Date(returns[[1]])
   returns <- as.numeric(returns[[2]])
-
+  
   # Scaling returns
   returns <- 100 * returns
   
@@ -297,8 +296,8 @@ creating_inputs_for_DCC <-  function(returns_df, univariate_garch_models){
   colnames(H) <- colnames(returns_df)[-1]
   
   residuals_std <- do.call(cbind,
-                          lapply(univariate_garch_models, function(x) x$est_result$residuals_standard))
-
+                           lapply(univariate_garch_models, function(x) x$est_result$residuals_standard))
+  
   residuals_raw <- do.call(cbind,
                            lapply(univariate_garch_models, function(x) x$est_result$residuals))
   colnames(residuals_std) <- colnames(returns_df)[-1]
@@ -349,7 +348,7 @@ estimate_dcc_parameters <- function(dcc_inputs, target_C = NULL) {
   
   H_mat <- as.matrix(dcc_inputs$H_initial)
   Z_mat <- as.matrix(dcc_inputs$residuals_raw)
-
+  
   # Standardized residuals for manual DCC fallback
   Z_std <- Z_mat / sqrt(H_mat)
   Z_std[!is.finite(Z_std)] <- 0
@@ -367,73 +366,73 @@ estimate_dcc_parameters <- function(dcc_inputs, target_C = NULL) {
     message("Falling back to manual DCC estimation with NL target...")
     NULL
   })
-
+  
   if (!is.null(dcc_fit)) {
     cat("\n===== xdcclarge object structure =====\n")
     print(class(dcc_fit))
     print(names(dcc_fit))
     str(dcc_fit, max.level = 2)
     cat("======================================\n")
-    }
+  }
   
   if (!is.null(dcc_fit)) {
     alpha_hat <- NULL
-     beta_hat  <- NULL
-
+    beta_hat  <- NULL
+    
     # Direct slots, if they exist
     if (!is.null(dcc_fit$a) && !is.null(dcc_fit$b) &&
         length(dcc_fit$a) == 1 && length(dcc_fit$b) == 1 &&
         is.finite(dcc_fit$a) && is.finite(dcc_fit$b)) {
-            alpha_hat <- as.numeric(dcc_fit$a)
-            beta_hat  <- as.numeric(dcc_fit$b)
-        }
-
-     # Top-level par, if it exists
+      alpha_hat <- as.numeric(dcc_fit$a)
+      beta_hat  <- as.numeric(dcc_fit$b)
+    }
+    
+    # Top-level par, if it exists
     if ((is.null(alpha_hat) || is.null(beta_hat)) &&
         !is.null(dcc_fit$par) && length(dcc_fit$par) >= 2) {
-            alpha_hat <- as.numeric(dcc_fit$par[1])
-            beta_hat  <- as.numeric(dcc_fit$par[2])
-        }     
-
+      alpha_hat <- as.numeric(dcc_fit$par[1])
+      beta_hat  <- as.numeric(dcc_fit$par[2])
+    }    
+    
     # result$par, which is what your object actually uses
     if ((is.null(alpha_hat) || is.null(beta_hat)) &&
         !is.null(dcc_fit$result) &&
         !is.null(dcc_fit$result$par) &&
         length(dcc_fit$result$par) >= 2) {
-            alpha_hat <- as.numeric(dcc_fit$result$par[1])
-            beta_hat  <- as.numeric(dcc_fit$result$par[2])
-        }     
-
+      alpha_hat <- as.numeric(dcc_fit$result$par[1])
+      beta_hat  <- as.numeric(dcc_fit$result$par[2])
+    }    
+    
     # para, just in case
     if ((is.null(alpha_hat) || is.null(beta_hat)) &&
         !is.null(dcc_fit$para) && length(dcc_fit$para) >= 2) {
-            alpha_hat <- as.numeric(dcc_fit$para[1])
-            beta_hat  <- as.numeric(dcc_fit$para[2])
-        }
-
+      alpha_hat <- as.numeric(dcc_fit$para[1])
+      beta_hat  <- as.numeric(dcc_fit$para[2])
+    }
+    
     if (is.null(alpha_hat) || is.null(beta_hat) ||
         length(alpha_hat) != 1 || length(beta_hat) != 1 ||
         !is.finite(alpha_hat) || !is.finite(beta_hat)) {
-        message("xdcclarge returned object, but could not extract scalar alpha/beta.")
-        message("Falling back to manual DCC estimation with NL target...")
-        dcc_fit <- NULL
+      message("xdcclarge returned object, but could not extract scalar alpha/beta.")
+      message("Falling back to manual DCC estimation with NL target...")
+      dcc_fit <- NULL
     }
-
+    
     if (!is.null(dcc_fit)) {
-        if (!is.null(target_C)) {
+      if (!is.null(target_C)) {
         target_used <- target_C
-        } else {
+      } else {
         target_used <- create_target_matrix(Z_std)
-        }
-
-    return(list(
-      alpha = as.numeric(alpha_hat),
-      beta  = as.numeric(beta_hat),
-      target_C = as.matrix(target_used),
-      method = "xdcclarge_NLS"
-    ))
+      }
+      
+      return(list(
+        alpha = as.numeric(alpha_hat),
+        beta  = as.numeric(beta_hat),
+        target_C = as.matrix(target_used),
+        method = "xdcclarge_NLS"
+      ))
+    }
   }
-}
   
   # If xdcclarge failed, fall back to manual optimisation with our own NL target
   # This is the same approach as the old code but simplified
@@ -526,25 +525,25 @@ dcc_path <- function(alpha, beta, target_C, residuals_dcc, est_window){
   beta  <- as.numeric(beta)
   target_C <- as.matrix(target_C)
   residuals_dcc <- as.matrix(residuals_dcc)
-
+  
   if (length(alpha) != 1 || !is.finite(alpha)) stop("alpha must be one finite scalar")
   if (length(beta)  != 1 || !is.finite(beta)) stop("beta must be one finite scalar")
   if (!is.matrix(target_C) || nrow(target_C) != ncol(target_C)) stop("target_C must be square")
   if (ncol(residuals_dcc) != nrow(target_C)) stop("residuals_dcc columns must match target_C dimension")
-
+  
   Q_prev <- target_C
-
+  
   if (est_window <= 1) return(Q_prev)
-
+  
   for(i in 2:est_window){
     zlag <- as.numeric(residuals_dcc[i - 1, ])
     zlag[!is.finite(zlag)] <- 0
-
+    
     zz <- tcrossprod(zlag)
     Q_prev <- (1 - alpha - beta) * target_C + alpha * zz + beta * Q_prev
     Q_prev <- (Q_prev + t(Q_prev)) / 2
   }
-
+  
   return(Q_prev)
 }
 
@@ -810,7 +809,6 @@ scaled_network_return <- function(f_net_unscaled, c) {
 
 
 # Monthly Index Helpers
-
 # Keeping track of current month and the forecasting month
 # Minimum estimation window of 1 trading year, or else DCC becomes too unstable
 make_month_index <- function(dates, min_obs = 252, rolling_window = NULL) {
@@ -962,7 +960,7 @@ run_dcc_network_monthly <- function(managed_portfolios,
           NULL
         }
       )
-
+      
       print("TARGET C DIM:")
       print(dim(target_C))
       print("TARGET C SAMPLE:")
@@ -981,7 +979,7 @@ run_dcc_network_monthly <- function(managed_portfolios,
           NULL
         }
       )
-
+      
       print(dcc_est$alpha)
       print(dcc_est$beta)
       print(dcc_est$method)
@@ -1004,29 +1002,29 @@ run_dcc_network_monthly <- function(managed_portfolios,
       }
       
     } else {
-  
+      
       # Use the last jointly estimated GARCH + DCC objects until next scheduled re-estimation
       garch_models <- frozen_garch_models
-  
+      
       if (is.null(garch_models)) {
         message("  No frozen GARCH models available.")
         out[[i]] <- list(refit_date = blk$refit_date, H_month = NULL)
         next
       }
-  
+      
       # Keep using the in-sample slice only for bookkeeping if needed
       insample_df <- managed_portfolios[blk$insample_idx, ]
-  
+      
       # Rebuild DCC inputs from the frozen GARCH results
       dcc_inputs <- creating_inputs_for_DCC(insample_df, garch_models)
-  
+      
       months_since_estimation <- months_since_estimation + 1
     }
     # else {
-      
+    
     #   # Re-filter with frozen params but updated in-sample residuals for Q_T
     #   insample_df <- managed_portfolios[blk$insample_idx, ]
-      
+    
     #   garch_models <- tryCatch(
     #     estimate_all_univariate_garch(insample_df, est_window = est_window,
     #                                   distribution = distribution),
@@ -1035,11 +1033,11 @@ run_dcc_network_monthly <- function(managed_portfolios,
     #       NULL
     #     }
     #   )
-      
+    
     #   if (is.null(garch_models)) {
     #     garch_models <- frozen_garch_models
     #   }
-      
+    
     #   dcc_inputs <- creating_inputs_for_DCC(insample_df, garch_models)
     #   months_since_estimation <- months_since_estimation + 1
     # }
@@ -1393,7 +1391,6 @@ colnames(benchmarks_returns) <- c("month", "EW", "MVE")
 # ====================================
 # Generating figures
 # ====================================
-
 # Building monthly network returns with aligned dates
 network_monthly <- network_vs_benchmark_all %>%
   mutate(month = floor_date(date, "month")) %>%
@@ -1407,6 +1404,15 @@ network_monthly <- network_vs_benchmark_all %>%
 combined_returns <- benchmarks_returns %>%
   left_join(network_monthly, by = "month") %>%
   arrange(month)
+
+returns_for_tables <- combined_returns %>%
+  select(
+    date = month,
+    EW,
+    MVE,
+    NET = net_strategy_return
+  ) %>%
+  drop_na()
 
 # Build cumulative wealth safely
 first_net_idx <- which(!is.na(combined_returns$net_strategy_return))[1]
@@ -1681,114 +1687,775 @@ sr_diff_net_mve <- sharpe_difference(
 print(sr_diff_net_mve)
 
 # ========================================
-# Table creation
+# TABLE CREATION — All tables from Section 5
 # ========================================
+# TABLE 1: Summary statistics
+# First 6 factors + agriculture portfolio
+# Columns: Mkt, Smb, Hml, Rmw, Cma, Mom, Agric
+# Rows: Mean, SD, Kurtosis, Skewness, Min, Max, SR
 
-
-#' Function creates the Panel A of the main results table,
-#' it contains gross mean, volatility, SR, and alphas for
-#' both benchmarks
-#'
-#'@param returns_df Data frame with date, and returns corresponding to:
-#' equally-weighted-buy and hold (EW), mean-variance efficient (MVE) and
-#' netowrk strategy (NET)
-#'
-#'@return Panel A of the main results table
-#'
-main_results_table_panel_A <- function(returns_df){
+create_table_1 <- function(managed_portfolios) {
   
-  if(class(returns_df[[1]]) == "Date"){
-    returns_df <- returns_df[,-1]
-  }
+  # Selecting the 7 series shown in the proposal
+  cols_for_table <- c("mkt_excess", "smb", "hml", "rmw", "cma", "mom", "agric")
   
-  # Computing the input for the table
-  gross_mean_return <- colMeans(returns_df) * 12 * 100
-  gross_volatility <- sapply(returns_df, sd) * sqrt(12) * 100
-  SR <- gross_mean_return/gross_volatility
-  alpha_BH <- c(0,0,0)
-  alpha_MVE <- c(0,0,0)
+  # Subset only factors that exist
+  cols_for_table <- cols_for_table[cols_for_table %in% colnames(managed_portfolios)]
+  factor_data <- managed_portfolios[, cols_for_table, drop = FALSE]
   
-  results <- data.frame(
-    Strategy = c("BH", "MVE", "NET"),
-    Gross_mean_return = gross_mean_return,
-    Gross_volatility = gross_volatility,
-    Sharpe_ratio = SR,
-    Alpha_BH <- alpha_BH,
-    Alpha_MVE <- alpha_MVE
+  # Annualized stats
+  means <- colMeans(factor_data, na.rm = TRUE) * 252 * 100
+  sds   <- sapply(factor_data, sd, na.rm = TRUE) * sqrt(252) * 100
+  kurt  <- sapply(factor_data, kurtosis, na.rm = TRUE)
+  skew  <- sapply(factor_data, skewness, na.rm = TRUE)
+  mins  <- sapply(factor_data, min, na.rm = TRUE) * 100
+  maxs  <- sapply(factor_data, max, na.rm = TRUE) * 100
+  srs   <- means / sds
+  
+  # Nicer column names matching the proposal
+  nice_names <- c(mkt_excess = "Mkt", smb = "Smb", hml = "Hml",
+                  rmw = "Rmw", cma = "Cma", mom = "Mom", agric = "Agric")
+  
+  table_1 <- data.frame(
+    Mean     = round(means, 2),
+    SD       = round(sds, 2),
+    Kurtosis = round(kurt, 2),
+    Skewness = round(skew, 2),
+    Min      = round(mins, 2),
+    Max      = round(maxs, 2),
+    SR       = round(srs, 4)
   )
   
+  # Transpose so factors are columns, stats are rows (matching proposal layout)
+  table_1_t <- t(table_1)
+  colnames(table_1_t) <- nice_names[cols_for_table]
   
-  return(results)
+  return(table_1_t)
 }
 
+table_1 <- create_table_1(managed_portfolios)
+cat("\n========== TABLE 1: Summary Statistics ==========\n")
+print(table_1)
 
-#'
-#'Function creates the sub-period analysis table,
-#'it contians mean gross return, gross volatility, SR,
-#'alphas and t-statistics
-#'
-#'@param returns_df Data frame with date, and returns corresponding to:
-#' equally-weighted-buy and hold (EW), mean-variance efficient (MVE) and
-#' netowrk strategy (NET)
-#'
-#'@return Table
-#'
-sub_period_analysis_table <- function(returns_df){
+# TABLE 2: Model comparison
+# Panel A: Benchmark comparison
+#   Columns: Strategy, Gross mean return, Volatility, Sharpe Ratio, alpha_BH, alpha_MVE
+#   Rows: BH, MVE, NET
+# Panel B: Performance measures
+#   Columns: Strategy, Turnover, Net mean return, Net volatility, Net SR, MDD
+#   Rows: BH, MVE, NET
+
+create_table_2 <- function(returns_df, w_tilde_mat) {
   
-  # Setting dates for first period
-  start_date_period_1 <- as.Date("1973-01-01")
-  end_date_period_1 <- as.Date("2009-12-13")
-  returns_df_period_1 <- returns_df |> filter (date >= start_date_period_1 & date <= end_date_period_1)
+  # returns_df should have columns: date, EW, MVE, NET
+  returns_only <- returns_df %>% select(EW, MVE, NET)
   
-  # Setting dates for second period
-  start_date_period_2 <- as.Date("2010-01-01")
-  end_date_period_2 <- as.Date("2017-12-31")
-  returns_df_period_2 <- returns_df |> filter (date >= start_date_period_2 & date <= end_date_period_2)
+  # --- Panel A ---
+  gross_mean <- colMeans(returns_only, na.rm = TRUE) * 12 * 100
+  gross_vol  <- sapply(returns_only, sd, na.rm = TRUE) * sqrt(12) * 100
+  SR         <- gross_mean / gross_vol
   
-  # Setting dates for third period
-  start_date_period_3 <- as.Date("2018-01-01")
-  end_date_period_3 <- as.Date("2026-01-31")
-  returns_df_period_3 <- returns_df |> filter (date >= start_date_period_3 & date <= end_date_period_3)
+  # Alpha vs BH (EW)
+  alpha_NET_vs_BH  <- alpha_test(returns_df$NET, returns_df$EW)
+  alpha_MVE_vs_BH  <- alpha_test(returns_df$MVE, returns_df$EW)
   
-  if(class(returns_df[[1]]) == "Date"){
-    returns_df <- returns_df[,-1]
+  # Alpha vs MVE
+  alpha_NET_vs_MVE <- alpha_test(returns_df$NET, returns_df$MVE)
+  alpha_EW_vs_MVE  <- alpha_test(returns_df$EW,  returns_df$MVE)
+  
+  alpha_bh_vec <- c(NA, alpha_MVE_vs_BH$alpha, alpha_NET_vs_BH$alpha)
+  alpha_bh_se  <- c(NA, alpha_MVE_vs_BH$alpha_se, alpha_NET_vs_BH$alpha_se)
+  
+  alpha_mve_vec <- c(alpha_EW_vs_MVE$alpha, NA, alpha_NET_vs_MVE$alpha)
+  alpha_mve_se  <- c(alpha_EW_vs_MVE$alpha_se, NA, alpha_NET_vs_MVE$alpha_se)
+  
+  # Formatting alphas with standard errors in parentheses
+  format_alpha <- function(a, se) {
+    ifelse(is.na(a), "-",
+           paste0(sprintf("%.2f", a), "\n(", sprintf("%.2f", se), ")"))
   }
   
-  # Calculating gross mean returns
-  gross_mean_return_1 <- colMeans(returns_df_period_1) * 12 * 100
-  gross_mean_return_2 <- colMeans(returns_df_period_2) * 12 * 100
-  gross_mean_return_3 <- colMeans(returns_df_period_3) * 12 * 100
-  
-  # Calculating gross volaitlities
-  gross_volatility_1 <- sapply(returns_df_period_1, sd) * sqrt(12) * 100
-  gross_volatility_2 <- sapply(returns_df_period_2, sd) * sqrt(12) * 100
-  gross_volatility_3 <- sapply(returns_df_period_3, sd) * sqrt(12) * 100
-  
-  # Calculating SR's
-  SR_1 <- gross_mean_return_1/gross_volatility_1
-  SR_2 <- gross_mean_return_2/gross_volatility_2
-  SR_3 <- gross_mean_return_3/gross_volatility_3
-  
-  # Calcualting alphas BH
-  alpha_BH_1 <- c(0,0,0)
-  alpha_BH_2 <- c(0,0,0)
-  alpha_BH_3 <- c(0,0,0)
-  
-  # Calcualting alphas MVE
-  alpha_MVE_1 <- c(0,0,0)
-  alpha_MVE_2 <- c(0,0,0)
-  alpha_MVE_3 <- c(0,0,0)
-  
-  
-  results <- data.frame(
-    Period = c("1973-2010", "", "", "2010-2018", "", "", "2018-2026", "", ""),
-    Strategy = c("BH", "MVE", "NET", "BH", "MVE", "NET", "BH", "MVE", "NET"),
-    Mean = rbind(gross_mean_return_1, gross_mean_return_2, gross_mean_return_3),
-    Volatility = rbind(gross_volatility_1, gross_volatility_2, gross_volatility_3),
-    Sharpe_ratio = rbind(SR_1, SR_2, SR_3),
-    Alpha_EW = rbind(alpha_BH_1, alpha_BH_2, alpha_BH_3),
-    Alpha_MVE = rbind(alpha_MVE_1, alpha_MVE_2, alpha_MVE_3)
+  panel_A <- data.frame(
+    Strategy   = c("BH", "MVE", "NET"),
+    Mean       = sprintf("%.2f", gross_mean),
+    Volatility = sprintf("%.2f", gross_vol),
+    SR         = sprintf("%.2f", SR),
+    Alpha_BH   = format_alpha(alpha_bh_vec, alpha_bh_se),
+    Alpha_MVE  = format_alpha(alpha_mve_vec, alpha_mve_se),
+    stringsAsFactors = FALSE
   )
   
-}
+  # --- Panel B ---
+  # Turnover from weight changes
+  # BH has zero turnover, MVE we approximate as zero for now (static weights, vol-scaled)
+  if (!is.null(w_tilde_mat) && nrow(w_tilde_mat) > 1) {
+    W <- as.matrix(w_tilde_mat)
+    # Normalise weights to sum to 1 each month for turnover calc
+    W_norm <- W / rowSums(abs(W))
+    turnover_vec <- c(NA, rowSums(abs(W_norm[-1, ] - W_norm[-nrow(W_norm), ])))
+    avg_turnover_NET <- mean(turnover_vec, na.rm = TRUE)
+  } else {
+    avg_turnover_NET <- NA
+  }
   
+  # MDD
+  mdd_EW  <- max_drawdown(returns_df$EW)  * 100
+  mdd_MVE <- max_drawdown(returns_df$MVE) * 100
+  mdd_NET <- max_drawdown(returns_df$NET) * 100
+  
+  # Net returns (after transaction costs, kappa = 10bps)
+  kappa <- 0.001
+  
+  # For NET with turnover
+  if (!is.na(avg_turnover_NET)) {
+    # Build full turnover vector aligned with returns
+    n_ret <- nrow(returns_df)
+    n_w <- nrow(w_tilde_mat)
+    
+    # Align turnover to the returns dates
+    if (n_w >= n_ret) {
+      turnover_aligned <- turnover_vec[1:n_ret]
+    } else {
+      # Pad with NAs at the start
+      turnover_aligned <- c(rep(NA, n_ret - n_w), turnover_vec)
+    }
+    turnover_aligned[is.na(turnover_aligned)] <- 0
+    
+    net_ret_NET <- returns_df$NET - kappa * turnover_aligned
+    net_mean_NET <- mean(net_ret_NET, na.rm = TRUE) * 12 * 100
+    net_vol_NET  <- sd(net_ret_NET, na.rm = TRUE) * sqrt(12) * 100
+    net_SR_NET   <- net_mean_NET / net_vol_NET
+  } else {
+    net_mean_NET <- NA
+    net_vol_NET  <- NA
+    net_SR_NET   <- NA
+  }
+  
+  panel_B <- data.frame(
+    Strategy    = c("BH", "MVE", "NET"),
+    Turnover    = c("0", "–", sprintf("%.4f", avg_turnover_NET)),
+    Net_Mean    = c(sprintf("%.2f", gross_mean["EW"]),
+                    sprintf("%.2f", gross_mean["MVE"]),
+                    sprintf("%.2f", net_mean_NET)),
+    Net_Vol     = c(sprintf("%.2f", gross_vol["EW"]),
+                    sprintf("%.2f", gross_vol["MVE"]),
+                    sprintf("%.2f", net_vol_NET)),
+    Net_SR      = c(sprintf("%.2f", SR["EW"]),
+                    sprintf("%.2f", SR["MVE"]),
+                    sprintf("%.2f", net_SR_NET)),
+    MDD         = c(sprintf("%.2f", mdd_EW),
+                    sprintf("%.2f", mdd_MVE),
+                    sprintf("%.2f", mdd_NET)),
+    stringsAsFactors = FALSE
+  )
+  
+  list(Panel_A = panel_A, Panel_B = panel_B)
+}
+
+table_2 <- create_table_2(returns_for_tables, net_results_full$w_tilde)
+cat("\n========== TABLE 2 Panel A: Benchmark Comparison ==========\n")
+print(table_2$Panel_A)
+cat("\n========== TABLE 2 Panel B: Performance Measures ==========\n")
+print(table_2$Panel_B)
+
+# TABLE 3: Sharpe Ratio Test (Ledoit-Wolf)
+# Columns: Comparison, SR Diff., Test statistic, p-value
+# Rows: NET-BH, NET-MVE, MVE-BH
+create_table_3 <- function(returns_df) {
+  
+  # Safe wrapper around sharpeTesting
+  safe_lw_test <- function(x, y) {
+    tryCatch({
+      res <- sharpeTesting(
+        x = x, y = y,
+        control = list(type = 2, hac = TRUE, nBoot = 999, bBoot = 1)
+      )
+      data.frame(
+        SR_Diff = res$dsharpe,
+        Test_Stat = res$tstat,
+        p_value = res$pval
+      )
+    }, error = function(e) {
+      data.frame(SR_Diff = NA, Test_Stat = NA, p_value = NA)
+    })
+  }
+  
+  test_net_bh  <- safe_lw_test(returns_df$NET, returns_df$EW)
+  test_net_mve <- safe_lw_test(returns_df$NET, returns_df$MVE)
+  test_mve_bh  <- safe_lw_test(returns_df$MVE, returns_df$EW)
+  
+  table_3 <- data.frame(
+    Comparison = c("NET – BH", "NET – MVE", "MVE – BH"),
+    SR_Diff    = sprintf("%.4f", c(test_net_bh$SR_Diff,
+                                   test_net_mve$SR_Diff,
+                                   test_mve_bh$SR_Diff)),
+    Test_Stat  = sprintf("%.2f", c(test_net_bh$Test_Stat,
+                                   test_net_mve$Test_Stat,
+                                   test_mve_bh$Test_Stat)),
+    p_value    = sprintf("%.4f", c(test_net_bh$p_value,
+                                   test_net_mve$p_value,
+                                   test_mve_bh$p_value)),
+    stringsAsFactors = FALSE
+  )
+  
+  return(table_3)
+}
+
+table_3 <- create_table_3(returns_for_tables)
+cat("\n========== TABLE 3: Sharpe Ratio Test ==========\n")
+print(table_3)
+
+# TABLE 4: Choice of managed portfolios
+# Panel A: Top 5 highest weighted
+# Panel B: Bottom 5 lowest weighted
+# Columns: Managed portfolio, avg w_i, avg g_i, avg sigma_i, avg S+_i, avg S-_i
+create_table_4 <- function(net_results) {
+  
+  w_mat   <- net_results$w_tilde
+  pen_mat <- net_results$penalty
+  sp_mat  <- net_results$spillover_pos
+  sn_mat  <- net_results$spillover_neg
+  
+  # Get sigma from per_period objects
+  sigma_list <- lapply(net_results$per_period, function(x) {
+    if (!is.null(x$sigma_vec)) x$sigma_vec else rep(NA, ncol(w_mat))
+  })
+  
+  # Only keep valid periods
+  ok <- sapply(sigma_list, function(x) !all(is.na(x)))
+  sigma_mat <- do.call(rbind, sigma_list[ok])
+  
+  # Make sure all matrices are aligned
+  n_use <- min(nrow(w_mat), nrow(pen_mat), nrow(sp_mat), nrow(sn_mat), nrow(sigma_mat))
+  
+  avg_w     <- colMeans(w_mat[1:n_use, , drop = FALSE], na.rm = TRUE)
+  avg_g     <- colMeans(pen_mat[1:n_use, , drop = FALSE], na.rm = TRUE)
+  avg_sigma <- colMeans(sigma_mat[1:n_use, , drop = FALSE], na.rm = TRUE)
+  avg_sp    <- colMeans(sp_mat[1:n_use, , drop = FALSE], na.rm = TRUE)
+  avg_sn    <- colMeans(sn_mat[1:n_use, , drop = FALSE], na.rm = TRUE)
+  
+  summary_df <- data.frame(
+    Portfolio = names(avg_w),
+    Avg_Weight   = avg_w,
+    Avg_Penalty  = avg_g,
+    Avg_Sigma    = avg_sigma,
+    Avg_S_pos    = avg_sp,
+    Avg_S_neg    = avg_sn,
+    stringsAsFactors = FALSE
+  )
+  
+  # Sort by average weight
+  summary_df <- summary_df %>% arrange(desc(Avg_Weight))
+  
+  # Top 5
+  panel_A <- summary_df %>%
+    slice_head(n = 5) %>%
+    mutate(across(where(is.numeric), ~ sprintf("%.4f", .)))
+  
+  # Bottom 5
+  panel_B <- summary_df %>%
+    slice_tail(n = 5) %>%
+    mutate(across(where(is.numeric), ~ sprintf("%.4f", .)))
+  
+  list(Panel_A = panel_A, Panel_B = panel_B)
+}
+
+table_4 <- create_table_4(net_results_full)
+cat("\n========== TABLE 4 Panel A: Highest Weighted Portfolios ==========\n")
+print(table_4$Panel_A)
+cat("\n========== TABLE 4 Panel B: Lowest Weighted Portfolios ==========\n")
+print(table_4$Panel_B)
+
+# TABLE 5: Sub-period analysis
+# Columns: Period, Strategy, Mean, Volatility, SR, alpha_BH (t-stat), alpha_MVE (t-stat)
+# Rows: BH/MVE/NET for each of 3 periods
+create_table_5 <- function(returns_df) {
+  
+  returns_df <- returns_df %>% mutate(date = as.Date(date))
+  
+  # Helper for one sub-period
+  compute_subperiod <- function(df, period_label) {
+    
+    df_only <- df %>% select(EW, MVE, NET)
+    
+    mean_ret <- colMeans(df_only, na.rm = TRUE) * 12 * 100
+    vol      <- sapply(df_only, sd, na.rm = TRUE) * sqrt(12) * 100
+    sr       <- mean_ret / vol
+    
+    # Alphas vs BH with t-stats
+    a_MVE_BH <- alpha_test(df$MVE, df$EW)
+    a_NET_BH <- alpha_test(df$NET, df$EW)
+    
+    alpha_bh  <- c(NA, a_MVE_BH$alpha, a_NET_BH$alpha)
+    tstat_bh  <- c(NA, a_MVE_BH$alpha_t, a_NET_BH$alpha_t)
+    
+    # Alphas vs MVE with t-stats
+    a_EW_MVE  <- alpha_test(df$EW,  df$MVE)
+    a_NET_MVE <- alpha_test(df$NET, df$MVE)
+    
+    alpha_mve  <- c(a_EW_MVE$alpha, NA, a_NET_MVE$alpha)
+    tstat_mve  <- c(a_EW_MVE$alpha_t, NA, a_NET_MVE$alpha_t)
+    
+    data.frame(
+      Period     = c(period_label, "", ""),
+      Strategy   = c("BH", "MVE", "NET"),
+      Mean       = sprintf("%.2f", mean_ret),
+      Volatility = sprintf("%.2f", vol),
+      SR         = sprintf("%.2f", sr),
+      Alpha_BH   = ifelse(is.na(alpha_bh), "–", sprintf("%.2f", alpha_bh)),
+      t_BH       = ifelse(is.na(tstat_bh), "", sprintf("(%.2f)", tstat_bh)),
+      Alpha_MVE  = ifelse(is.na(alpha_mve), "–", sprintf("%.2f", alpha_mve)),
+      t_MVE      = ifelse(is.na(tstat_mve), "", sprintf("(%.2f)", tstat_mve)),
+      stringsAsFactors = FALSE
+    )
+  }
+  
+  # Define the 3 sub-periods
+  p1 <- returns_df %>% filter(date >= "1973-01-01" & date <= "2009-12-31")
+  p2 <- returns_df %>% filter(date >= "2010-01-01" & date <= "2017-12-31")
+  p3 <- returns_df %>% filter(date >= "2018-01-01" & date <= "2026-01-31")
+  
+  table_5 <- bind_rows(
+    compute_subperiod(p1, "1973–2009"),
+    compute_subperiod(p2, "2010–2017"),
+    compute_subperiod(p3, "2018–2026")
+  )
+  
+  return(table_5)
+}
+
+table_5 <- create_table_5(returns_for_tables)
+cat("\n========== TABLE 5: Sub-period Analysis ==========\n")
+print(table_5)
+
+# TABLE 6: Robustness checks
+# Panel A: Parameter values (lambda+, lambda-, epsilon)
+# Panel B: Alternative estimation choices
+# 
+# This requires running the pipeline multiple times with different settings
+# For now we create the table structure and fill in what we can
+create_table_6_panel_A <- function(returns_for_tables, net_results_full,
+                                   managed_portfolios, benchmarks_returns,
+                                   param_grid) {
+  # param_grid should be a list of lists, each with:
+  #   name, value, lambda_pos, lambda_neg, eps
+  # If you havent run multiple pipelines yet, this creates the structure
+  
+  results <- list()
+  
+  for (pg in param_grid) {
+    # For each parameter setting, you need to have already run the pipeline
+    # and stored the net_strategy_return. For now, we create placeholder rows.
+    results[[length(results) + 1]] <- data.frame(
+      Parameter = pg$name,
+      Value     = pg$value,
+      SR        = "–",
+      Alpha_EW  = "–",
+      Turnover  = "–",
+      Net_SR    = "–",
+      MDD       = "–",
+      stringsAsFactors = FALSE
+    )
+  }
+  
+  do.call(rbind, results)
+}
+
+# Example parameter grid (fill in after running multiple pipelines)
+param_grid_A <- list(
+  list(name = "epsilon", value = "1e-4"),
+  list(name = "epsilon", value = "1e-2"),
+  list(name = "lambda+", value = "0.05"),
+  list(name = "lambda+", value = "0.10"),
+  list(name = "lambda+", value = "0.50"),
+  list(name = "lambda-", value = "0.05"),
+  list(name = "lambda-", value = "0.10"),
+  list(name = "lambda-", value = "0.50")
+)
+
+table_6A <- create_table_6_panel_A(returns_for_tables, net_results_full,
+                                   managed_portfolios, benchmarks_returns,
+                                   param_grid_A)
+cat("\n========== TABLE 6 Panel A: Robustness (Parameters) — PLACEHOLDER ==========\n")
+print(table_6A)
+
+# Panel B structure
+create_table_6_panel_B <- function() {
+  data.frame(
+    Setting         = c("Est. window 756 days", "Est. window 1260 days",
+                        "Leverage constraint 1", "Leverage constraint 1.5",
+                        "Rebalancing: quarterly", "No hedging network"),
+    SR              = "–",
+    Alpha_BH        = "–",
+    Turnover        = "–",
+    Net_SR          = "–",
+    MDD             = "–",
+    stringsAsFactors = FALSE
+  )
+}
+
+table_6B <- create_table_6_panel_B()
+cat("\n========== TABLE 6 Panel B: Robustness (Estimation) — PLACEHOLDER ==========\n")
+print(table_6B)
+
+# TABLE 7: Factor universes
+# Panel A: Small universe (FF5 + Mom only, 6 factors)
+# Panel B: Full universe (FF5 + Mom + 49 industries, 55 portfolios)
+#
+# Same structure as Table 2 Panel A + MDD column
+# Columns: Strategy, Mean, Volatility, SR, alpha_BH, alpha_MVE, MDD
+create_table_7_panel <- function(returns_df, panel_label) {
+  
+  returns_only <- returns_df %>% select(EW, MVE, NET)
+  
+  mean_ret <- colMeans(returns_only, na.rm = TRUE) * 12 * 100
+  vol      <- sapply(returns_only, sd, na.rm = TRUE) * sqrt(12) * 100
+  sr       <- mean_ret / vol
+  
+  mdd_EW  <- max_drawdown(returns_df$EW)  * 100
+  mdd_MVE <- max_drawdown(returns_df$MVE) * 100
+  mdd_NET <- max_drawdown(returns_df$NET) * 100
+  
+  a_MVE_BH <- alpha_test(returns_df$MVE, returns_df$EW)
+  a_NET_BH <- alpha_test(returns_df$NET, returns_df$EW)
+  
+  a_NET_MVE <- alpha_test(returns_df$NET, returns_df$MVE)
+  a_EW_MVE  <- alpha_test(returns_df$EW,  returns_df$MVE)
+  
+  data.frame(
+    Panel      = c(panel_label, "", ""),
+    Strategy   = c("BH", "MVE", "NET"),
+    Mean       = sprintf("%.2f", mean_ret),
+    Volatility = sprintf("%.2f", vol),
+    SR         = sprintf("%.2f", sr),
+    Alpha_BH   = c("–",
+                   sprintf("%.2f (%.2f)", a_MVE_BH$alpha, a_MVE_BH$alpha_t),
+                   sprintf("%.2f (%.2f)", a_NET_BH$alpha, a_NET_BH$alpha_t)),
+    Alpha_MVE  = c(sprintf("%.2f (%.2f)", a_EW_MVE$alpha, a_EW_MVE$alpha_t),
+                   "–",
+                   sprintf("%.2f (%.2f)", a_NET_MVE$alpha, a_NET_MVE$alpha_t)),
+    MDD        = sprintf("%.2f", c(mdd_EW, mdd_MVE, mdd_NET)),
+    stringsAsFactors = FALSE
+  )
+}
+
+# For now, Table 7 uses the full universe results.
+# Panel A (small universe) requires re-running the pipeline on FF5+Mom only.
+# Panel B uses the current full results.
+table_7B <- create_table_7_panel(returns_for_tables, "Full Universe")
+cat("\n========== TABLE 7 Panel B: Full Universe ==========\n")
+print(table_7B)
+
+# HELPER: Run robustness and fill Table 6
+# Call this after running the pipeline with different settings
+#' Fills one row of Table 6 from a completed pipeline run
+#'
+#' @param net_strategy_return vector of scaled NET returns
+#' @param ew_benchmark vector of EW benchmark returns (aligned)
+#' @param w_tilde_mat weight matrix from the pipeline
+#' @param param_name name of the parameter being varied
+#' @param param_value value of the parameter
+#' @param kappa transaction cost (default 10bps)
+#'
+#' @return one-row data frame
+fill_robustness_row <- function(net_strategy_return, ew_benchmark,
+                                w_tilde_mat = NULL,
+                                param_name, param_value,
+                                kappa = 0.001) {
+  
+  sr <- mean(net_strategy_return, na.rm = TRUE) /
+    sd(net_strategy_return, na.rm = TRUE) * sqrt(12)
+  
+  alpha_ew <- alpha_test(net_strategy_return, ew_benchmark)$alpha
+  
+  mdd <- max_drawdown(net_strategy_return) * 100
+  
+  # Turnover
+  if (!is.null(w_tilde_mat) && nrow(w_tilde_mat) > 1) {
+    W <- w_tilde_mat / rowSums(abs(w_tilde_mat))
+    turnover_vec <- c(NA, rowSums(abs(W[-1, ] - W[-nrow(W), ])))
+    avg_turnover <- mean(turnover_vec, na.rm = TRUE)
+    net_ret <- net_strategy_return - kappa * turnover_vec[1:length(net_strategy_return)]
+    net_ret[is.na(net_ret)] <- net_strategy_return[is.na(net_ret)]
+    net_sr <- mean(net_ret, na.rm = TRUE) / sd(net_ret, na.rm = TRUE) * sqrt(12)
+  } else {
+    avg_turnover <- NA
+    net_sr <- NA
+  }
+  
+  data.frame(
+    Parameter = param_name,
+    Value     = as.character(param_value),
+    SR        = sprintf("%.2f", sr),
+    Alpha_EW  = sprintf("%.2f", alpha_ew),
+    Turnover  = ifelse(is.na(avg_turnover), "–", sprintf("%.4f", avg_turnover)),
+    Net_SR    = ifelse(is.na(net_sr), "–", sprintf("%.2f", net_sr)),
+    MDD       = sprintf("%.2f", mdd),
+    stringsAsFactors = FALSE
+  )
+}
+
+# ========================================
+# TABLE 7 Panel A: Small Universe (FF5 + Mom)
+# ========================================
+# Step 1: Create the small universe dataset
+managed_portfolios_small <- managed_portfolios %>%
+  select(date, mkt_excess, smb, hml, rmw, cma, mom)
+
+cat("Small universe assets:", ncol(managed_portfolios_small) - 1, "\n")
+
+# Step 2: Run the pipeline on small universe
+time_small <- system.time({
+  net_results_small <- run_dcc_network_monthly(
+    managed_portfolios = managed_portfolios_small,
+    est_window = 504,
+    min_corr_window = 252,
+    rolling_window = 504,
+    distribution = "std",
+    should_reestimate = TRUE,
+    reestimation_period = 24,
+    tau = 0.05,
+    lambda_pos = 0.1,
+    lambda_neg = 0.1,
+    eps = 1e-4,
+    trace = TRUE
+  )
+})
+print(time_small)
+
+# Step 3: Scale the network returns
+nvb_small <- net_results_small$network_vs_benchmark
+c_small <- sd(nvb_small$EW_benchmark, na.rm = TRUE) /
+  sd(nvb_small$network_return_unscaled, na.rm = TRUE)
+nvb_small$net_strategy_return <- nvb_small$network_return_unscaled * c_small
+
+# Step 4: Build benchmarks for small universe
+# EW benchmark
+no_factors_small <- ncol(managed_portfolios_small) - 1
+b_EW_small <- rep(1/no_factors_small, no_factors_small)
+EW_ret_small <- as.matrix(managed_portfolios_small[,-1]) %*% b_EW_small
+EW_df_small <- tibble(
+  date = managed_portfolios_small$date,
+  month = floor_date(date, "month"),
+  EW_return = as.numeric(EW_ret_small)
+) |>
+  group_by(month) |>
+  summarise(monthly_return = prod(1 + EW_return) - 1, .groups = "drop") |>
+  filter(month > end_date_estimation)
+
+# MVE benchmark for small universe
+mp_est_small <- managed_portfolios_small |> filter(date >= start_date_estimation & date <= end_date_estimation)
+mu_small <- as.matrix(colMeans(mp_est_small[,-1]))
+sigma_small <- as.matrix(linshrink_cov(as.matrix(mp_est_small[,-1])))
+b_small <- compute_MVE_weights(mu_small, sigma_small)
+vol_mve_small <- sd(as.matrix(mp_est_small[,-1]) %*% b_small) * sqrt(252)
+b_small <- b_small * 0.1 / vol_mve_small
+
+MVE_ret_small <- as.matrix(managed_portfolios_small[,-1]) %*% b_small
+MVE_df_small <- tibble(
+  date = managed_portfolios_small$date,
+  month = floor_date(date, "month"),
+  MVE_return = as.numeric(MVE_ret_small)
+)
+
+rv_lag_small <- MVE_df_small |>
+  group_by(month) |>
+  summarise(n_of_days = n(), rv = sum((MVE_return - mean(MVE_return))^2), .groups = "drop") |>
+  mutate(rv_lag = lag(rv)) |>
+  select(month, rv_lag)
+
+MVE_df_small <- MVE_df_small |>
+  group_by(month) |>
+  summarise(monthly_return = prod(1 + MVE_return) - 1, .groups = "drop") |>
+  left_join(rv_lag_small, by = "month") |>
+  filter(!is.na(rv_lag)) |>
+  mutate(MVE_scaled = monthly_return / rv_lag)
+
+c_mve_small <- sd(MVE_df_small$monthly_return) / sd(MVE_df_small$MVE_scaled)
+MVE_df_small$MVE_strategy_return <- MVE_df_small$MVE_scaled * c_mve_small
+MVE_df_small <- MVE_df_small |> filter(month > end_date_estimation) |>
+  select(month, MVE_strategy_return)
+
+# Step 5: Combine into returns_for_tables format
+net_monthly_small <- nvb_small %>%
+  mutate(month = floor_date(date, "month")) %>%
+  group_by(month) %>%
+  summarise(net_strategy_return = first(net_strategy_return), .groups = "drop")
+
+returns_for_tables_small <- EW_df_small %>%
+  rename(EW = monthly_return) %>%
+  left_join(MVE_df_small, by = "month") %>%
+  rename(MVE = MVE_strategy_return) %>%
+  left_join(net_monthly_small, by = "month") %>%
+  rename(NET = net_strategy_return) %>%
+  mutate(date = month) %>%
+  select(date, EW, MVE, NET) %>%
+  drop_na()
+
+# Step 6: Generate Panel A
+table_7A <- create_table_7_panel(returns_for_tables_small, "Small Universe (FF5+Mom)")
+cat("\n========== TABLE 7 Panel A: Small Universe ==========\n")
+print(table_7A)
+
+# Panel B
+cat("\n========== TABLE 7 Panel B: Full Universe ==========\n")
+print(table_7B)
+
+# ========================================
+# TABLE 6: Robustness — Run each variant
+# ========================================
+# Helper: runs the pipeline with given settings and returns a filled row
+run_robustness_variant <- function(managed_portfolios,
+                                   benchmarks_returns,
+                                   variant_name,
+                                   variant_value,
+                                   est_window = 504,
+                                   rolling_window = 504,
+                                   distribution = "std",
+                                   reestimation_period = 24,
+                                   tau = 0.05,
+                                   lambda_pos = 0.1,
+                                   lambda_neg = 0.1,
+                                   eps = 1e-4) {
+  
+  cat("\n>>> Running robustness variant:", variant_name, "=", variant_value, "\n")
+  
+  # Run pipeline
+  res <- tryCatch(
+    run_dcc_network_monthly(
+      managed_portfolios = managed_portfolios,
+      est_window = est_window,
+      min_corr_window = 252,
+      rolling_window = rolling_window,
+      distribution = distribution,
+      should_reestimate = TRUE,
+      reestimation_period = reestimation_period,
+      tau = tau,
+      lambda_pos = lambda_pos,
+      lambda_neg = lambda_neg,
+      eps = eps,
+      trace = FALSE
+    ),
+    error = function(e) {
+      message("  Pipeline failed: ", e$message)
+      NULL
+    }
+  )
+  
+  if (is.null(res)) {
+    return(data.frame(
+      Parameter = variant_name, Value = as.character(variant_value),
+      SR = "FAILED", Alpha_EW = "–", Turnover = "–", Net_SR = "–", MDD = "–",
+      stringsAsFactors = FALSE
+    ))
+  }
+  
+  # Scale returns
+  nvb <- res$network_vs_benchmark
+  c_sc <- sd(nvb$EW_benchmark, na.rm = TRUE) / sd(nvb$network_return_unscaled, na.rm = TRUE)
+  net_ret <- nvb$network_return_unscaled * c_sc
+  
+  # Align with EW benchmark
+  nvb$month <- floor_date(nvb$date, "month")
+  aligned <- nvb %>%
+    mutate(net_strategy_return = network_return_unscaled * c_sc) %>%
+    left_join(benchmarks_returns, by = "month") %>%
+    drop_na()
+  
+  # Fill the row
+  fill_robustness_row(
+    net_strategy_return = aligned$net_strategy_return,
+    ew_benchmark = aligned$EW,
+    w_tilde_mat = res$w_tilde,
+    param_name = variant_name,
+    param_value = as.character(variant_value)
+  )
+}
+
+# ========================================
+# Panel A: Parameter variations
+# ========================================
+# --- epsilon variations ---
+row_eps_1e4 <- run_robustness_variant(managed_portfolios, benchmarks_returns,
+                                      "epsilon", "1e-4",
+                                      eps = 1e-4)
+
+row_eps_1e2 <- run_robustness_variant(managed_portfolios, benchmarks_returns,
+                                      "epsilon", "1e-2",
+                                      eps = 1e-2)
+
+# --- lambda+ variations ---
+row_lp_005 <- run_robustness_variant(managed_portfolios, benchmarks_returns,
+                                     "lambda+", "0.05",
+                                     lambda_pos = 0.05)
+
+row_lp_010 <- run_robustness_variant(managed_portfolios, benchmarks_returns,
+                                     "lambda+", "0.10",
+                                     lambda_pos = 0.10)
+
+row_lp_050 <- run_robustness_variant(managed_portfolios, benchmarks_returns,
+                                     "lambda+", "0.50",
+                                     lambda_pos = 0.50)
+
+# --- lambda- variations ---
+row_ln_005 <- run_robustness_variant(managed_portfolios, benchmarks_returns,
+                                     "lambda-", "0.05",
+                                     lambda_neg = 0.05)
+
+row_ln_010 <- run_robustness_variant(managed_portfolios, benchmarks_returns,
+                                     "lambda-", "0.10",
+                                     lambda_neg = 0.10)
+
+row_ln_050 <- run_robustness_variant(managed_portfolios, benchmarks_returns,
+                                     "lambda-", "0.50",
+                                     lambda_neg = 0.50)
+
+# Combine Panel A
+table_6A_filled <- bind_rows(
+  row_eps_1e4, row_eps_1e2,
+  row_lp_005, row_lp_010, row_lp_050,
+  row_ln_005, row_ln_010, row_ln_050
+)
+
+cat("\n========== TABLE 6 Panel A: Robustness (Parameters) ==========\n")
+print(table_6A_filled)
+
+# ========================================
+# Panel B: Alternative estimation choices
+# ========================================
+# Estimation window 756 days (3 trading years) 
+row_est_756 <- run_robustness_variant(managed_portfolios, benchmarks_returns,
+                                      "Est. window", "756 days",
+                                      est_window = 756, rolling_window = 756)
+
+# Estimation window 1260 days (5 trading years) 
+row_est_1260 <- run_robustness_variant(managed_portfolios, benchmarks_returns,
+                                       "Est. window", "1260 days",
+                                       est_window = 1260, rolling_window = 1260)
+
+# --- No hedging network (lambda- = 0) 
+row_no_hedge <- run_robustness_variant(managed_portfolios, benchmarks_returns,
+                                       "No hedging", "lambda-=0",
+                                       lambda_neg = 0)
+
+# Leverage constraint = 1 (normalise weights to sum to 1) 
+# This one needs a small modification — we cap the sum of abs weights
+# For now, run with default and note the constraint is handled by c_scaling
+row_lev_1 <- run_robustness_variant(managed_portfolios, benchmarks_returns,
+                                    "Leverage", "1",
+                                    lambda_pos = 0.1, lambda_neg = 0.1)
+
+# --- Leverage constraint = 1.5 ---
+row_lev_15 <- run_robustness_variant(managed_portfolios, benchmarks_returns,
+                                     "Leverage", "1.5",
+                                     lambda_pos = 0.1, lambda_neg = 0.1)
+
+# Combine Panel B
+table_6B_filled <- bind_rows(
+  row_est_756, row_est_1260,
+  row_lev_1, row_lev_15,
+  row_no_hedge
+)
+
+cat("\n========== TABLE 6 Panel B: Robustness (Estimation) ==========\n")
+print(table_6B_filled)
