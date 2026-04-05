@@ -1354,7 +1354,7 @@ MVE_returns_df <- MVE_returns_df |> filter(month >= start_date_estimation + mont
 # Scaling by c
 c = sd(MVE_returns_df$monthly_return)/sd(MVE_returns_df$MVE_scaled)
 MVE_returns_df$MVE_strategy_return <- MVE_returns_df$MVE_scaled*c
-MVE_returns_weights_df$MVE_weights = MVE_returns_weights_df$MVE_weghts * c
+MVE_returns_weights_df$MVE_weights = MVE_returns_weights_df$MVE_weights * c
 MVE_returns_df <- MVE_returns_df |> select(-c(monthly_return, MVE_scaled))
 
 
