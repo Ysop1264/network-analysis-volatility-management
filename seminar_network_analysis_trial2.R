@@ -1338,6 +1338,10 @@ MVE_returns_df <- MVE_returns_df |> group_by(month) |>
 
 # Scaling the portfolio by its lagged realized variance
 MVE_returns_df <- MVE_returns_df |> left_join(rv_lag_MVE, by = "month")
+MVE_returns_weights_df <- MVE_returns_df |> 
+  mutate(
+    MVE_weights = 1/ rv_lag
+  )
 MVE_returns_df <- MVE_returns_df |>
   mutate(
     MVE_scaled = monthly_return / rv_lag
@@ -1350,6 +1354,7 @@ MVE_returns_df <- MVE_returns_df |> filter(month >= start_date_estimation + mont
 # Scaling by c
 c = sd(MVE_returns_df$monthly_return)/sd(MVE_returns_df$MVE_scaled)
 MVE_returns_df$MVE_strategy_return <- MVE_returns_df$MVE_scaled*c
+MVE_returns_weights_df$MVE_weights = MVE_returns_weights_df$MVE_weghts * c
 MVE_returns_df <- MVE_returns_df |> select(-c(monthly_return, MVE_scaled))
 
 
