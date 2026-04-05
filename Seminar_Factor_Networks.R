@@ -79,6 +79,7 @@ print(head(managed_portfolios))
 
 # =================================================
 # Functions
+# Functions
 # =================================================
 
 #' Compute the MVE static weights
@@ -2255,7 +2256,7 @@ lw_summary <- tibble(
 )
 
 print(lw_summary)
-                          
+
 # Difference between NET and Buy-and-Hold 
 sr_diff_net_ew <- sharpe_difference(
   network_vs_benchmark_biyearly$net_strategy_return,
