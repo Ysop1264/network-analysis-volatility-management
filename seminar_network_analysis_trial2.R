@@ -1357,6 +1357,17 @@ MVE_returns_df$MVE_strategy_return <- MVE_returns_df$MVE_scaled*c
 MVE_returns_weights_df$MVE_weights = MVE_returns_weights_df$MVE_weights * c
 MVE_returns_df <- MVE_returns_df |> select(-c(monthly_return, MVE_scaled))
 
+# Full monthly MVE asset weights: scalar monthly leverage times fixed weight vector b
+MVE_weights_mat <- MVE_returns_weights_df$MVE_weights %o% as.numeric(b)
+
+colnames(MVE_weights_mat) <- colnames(managed_portfolios)[-1]
+
+MVE_weights_df <- data.frame(
+  date = MVE_returns_weights_df$month,
+  MVE_weights_mat,
+  check.names = FALSE
+)
+
 
 ### Equally weighted buy-and-hold
 no_of_factors <- dim(managed_portfolios[,-1])[2]
@@ -1694,14 +1705,14 @@ print(sr_diff_net_mve)
 compute_turnover_drift <- function(returns_df, weights_df, half_turnover = FALSE) {
   
   W_raw <- as.matrix(weights_df[, -1, drop = FALSE])
-  
-  # Normalize weights to sum to 1 in absolute value
-  W <- W_raw / rowSums(abs(W_raw))
   R <- as.matrix(returns_df[, -1, drop = FALSE])
   
-  if (nrow(W) != nrow(R)) {
+  if (nrow(W_raw) != nrow(R)) {
     stop("weights_df and returns_df must have the same number of rows.")
   }
+  
+  # Normalize target weights to gross exposure = 1
+  W <- W_raw / rowSums(abs(W_raw))
   
   n <- nrow(W)
   turnover <- rep(NA_real_, n)
@@ -1711,45 +1722,106 @@ compute_turnover_drift <- function(returns_df, weights_df, half_turnover = FALSE
     w_prev <- W[t - 1, ]
     r_t <- R[t, ]
     
-    # Portfolio gross return over the period using previous weights
-    gross_portfolio_value <- sum(w_prev * (1 + r_t), na.rm = TRUE)
+    # Drift previous positions through asset returns
+    pos_pre <- w_prev * (1 + r_t)
     
-    # Drifted pre-trade weights before rebalancing at t
-    w_pre <- (w_prev * (1 + r_t)) / gross_portfolio_value
+    # Re-normalize by gross exposure, NOT net portfolio value
+    gross_pre <- sum(abs(pos_pre), na.rm = TRUE)
     
-    # Turnover needed to move from drifted weights to target weights
+    if (gross_pre == 0 || !is.finite(gross_pre)) {
+      turnover[t] <- NA_real_
+      next
+    }
+    
+    w_pre <- pos_pre / gross_pre
+    
     raw_turnover <- sum(abs(W[t, ] - w_pre), na.rm = TRUE)
     
     turnover[t] <- if (half_turnover) 0.5 * raw_turnover else raw_turnover
   }
   
-  return(turnover)
+  turnover
 }
 
-MVE_returns_weights_df <- MVE_returns_weights_df |> 
-  filter(month > end_date_estimation)
-# Step 1: make sure both use same date column name
-weights_df <- MVE_returns_weights_df |> rename(date = month)
+canonical_months <- asset_returns_monthly %>%
+  filter(date > end_date_estimation) %>%
+  transmute(
+    month = floor_date(date, "month"),
+    date = date
+  )
 
-# Step 2: align both datasets
-common_dates <- intersect(weights_df$date, returns_for_tables$date)
+MVE_weights_mat <- MVE_returns_weights_df$MVE_weights %o% as.numeric(b)
+colnames(MVE_weights_mat) <- colnames(managed_portfolios)[-1]
 
-weights_df <- weights_df |> filter(date %in% common_dates)
-returns_for_tables <- returns_for_tables |> filter(date %in% common_dates)
+MVE_weights_df <- data.frame(
+  month = MVE_returns_weights_df$month,
+  MVE_weights_mat,
+  check.names = FALSE
+) %>%
+  left_join(canonical_months, by = "month") %>%
+  select(date, everything(), -month)
 
-nrow(weights_df)
-nrow(returns_for_tables)
+NET_weights_df <- data.frame(
+  date_raw = as.Date(net_results_full$summary$date),
+  net_results_full$w_tilde,
+  check.names = FALSE
+) %>%
+  mutate(month = floor_date(date_raw, "month")) %>%
+  left_join(canonical_months, by = "month") %>%
+  mutate(date = coalesce(date, date_raw)) %>%
+  select(date, everything(), -month, -date_raw)
 
-turnover_vec <- compute_turnover_drift(
-  returns_df = returns_for_tables,
-  weights_df = weights_df
+returns_for_tables <- canonical_months %>%
+  left_join(
+    benchmarks_returns,
+    by = "month"
+  ) %>%
+  left_join(
+    network_vs_benchmark_all %>%
+      mutate(
+        date = as.Date(date),
+        month = floor_date(date, "month")
+      ) %>%
+      group_by(month) %>%
+      summarise(
+        NET = first(net_strategy_return),
+        .groups = "drop"
+      ),
+    by = "month"
+  ) %>%
+  select(date, EW, MVE, NET)
+
+common_dates <- Reduce(intersect, list(
+  asset_returns_monthly$date,
+  NET_weights_df$date,
+  MVE_weights_df$date,
+  returns_for_tables$date
+))
+
+asset_returns_monthly <- asset_returns_monthly %>%
+  filter(date %in% common_dates) %>%
+  arrange(date)
+
+NET_weights_df <- NET_weights_df %>%
+  filter(date %in% common_dates) %>%
+  arrange(date)
+
+MVE_weights_df <- MVE_weights_df %>%
+  filter(date %in% common_dates) %>%
+  arrange(date)
+
+returns_for_tables <- returns_for_tables %>%
+  filter(date %in% common_dates) %>%
+  arrange(date)
+
+turnover_vec_NET <- compute_turnover_drift(
+  returns_df = asset_returns_monthly,
+  weights_df = NET_weights_df
 )
-head(turnover_vec)
-summary(turnover_vec)
 
 turnover_vec_MVE <- compute_turnover_drift(
-  returns_df = returns_for_tables,
-  weights_df = weights_df   # must contain MVE weights!
+  returns_df = asset_returns_monthly,
+  weights_df = MVE_weights_df
 )
 # ========================================
 # TABLE CREATION — All tables from Section 5
@@ -1826,7 +1898,7 @@ create_table_2 <- function(returns_df, turnover_vec = NULL, turnover_vec_MVE = N
   
   # Alpha vs MVE
   alpha_NET_vs_MVE <- alpha_test(returns_df$NET, returns_df$MVE)
-  alpha_EW_vs_MVE  <- alpha_test(returns_df$EW,  returns_df$MVE)
+  alpha_EW_vs_MVE  <- alpha_test(returns_df$EW, returns_df$MVE)
   
   alpha_bh_vec <- c(NA, alpha_MVE_vs_BH$alpha, alpha_NET_vs_BH$alpha)
   alpha_bh_se  <- c(NA, alpha_MVE_vs_BH$alpha_se, alpha_NET_vs_BH$alpha_se)
@@ -1834,7 +1906,6 @@ create_table_2 <- function(returns_df, turnover_vec = NULL, turnover_vec_MVE = N
   alpha_mve_vec <- c(alpha_EW_vs_MVE$alpha, NA, alpha_NET_vs_MVE$alpha)
   alpha_mve_se  <- c(alpha_EW_vs_MVE$alpha_se, NA, alpha_NET_vs_MVE$alpha_se)
   
-  # Formatting alphas with standard errors in parentheses
   format_alpha <- function(a, se) {
     ifelse(is.na(a), "-",
            paste0(sprintf("%.2f", a), "\n(", sprintf("%.2f", se), ")"))
@@ -1851,12 +1922,16 @@ create_table_2 <- function(returns_df, turnover_vec = NULL, turnover_vec_MVE = N
   )
   
   # --- Panel B ---
-  # Turnover from weight changes
-  # BH has zero turnover, MVE we approximate as zero for now (static weights, vol-scaled)
-  if (!is.null(turnover_vec)) {
-    avg_turnover_NET <- mean(turnover_vec, na.rm = TRUE)
+  avg_turnover_NET <- if (!is.null(turnover_vec)) {
+    mean(turnover_vec, na.rm = TRUE)
   } else {
-    avg_turnover_NET <- NA
+    NA_real_
+  }
+  
+  avg_turnover_MVE <- if (!is.null(turnover_vec_MVE)) {
+    mean(turnover_vec_MVE, na.rm = TRUE)
+  } else {
+    NA_real_
   }
   
   # MDD
@@ -1864,53 +1939,71 @@ create_table_2 <- function(returns_df, turnover_vec = NULL, turnover_vec_MVE = N
   mdd_MVE <- max_drawdown(returns_df$MVE) * 100
   mdd_NET <- max_drawdown(returns_df$NET) * 100
   
-  # Net returns (after transaction costs, kappa = 10bps)
+  # Net returns after transaction costs
   kappa <- 0.001
   
-  # For NET with turnover
+  # MVE net returns
+  if (!is.null(turnover_vec_MVE)) {
+    turnover_aligned_MVE <- turnover_vec_MVE
+    turnover_aligned_MVE[is.na(turnover_aligned_MVE)] <- 0
+    
+    net_ret_MVE  <- returns_df$MVE - kappa * turnover_aligned_MVE
+    net_mean_MVE <- mean(net_ret_MVE, na.rm = TRUE) * 12 * 100
+    net_vol_MVE  <- sd(net_ret_MVE, na.rm = TRUE) * sqrt(12) * 100
+    net_SR_MVE   <- net_mean_MVE / net_vol_MVE
+  } else {
+    net_mean_MVE <- gross_mean["MVE"]
+    net_vol_MVE  <- gross_vol["MVE"]
+    net_SR_MVE   <- SR["MVE"]
+  }
+  
+  # NET net returns
   if (!is.null(turnover_vec)) {
+    turnover_aligned_NET <- turnover_vec
+    turnover_aligned_NET[is.na(turnover_aligned_NET)] <- 0
     
-    turnover_aligned <- turnover_vec
-    
-    # Replace NA (first obs) with 0
-    turnover_aligned[is.na(turnover_aligned)] <- 0
-    
-    net_ret_NET <- returns_df$NET - kappa * turnover_aligned
-    
+    net_ret_NET  <- returns_df$NET - kappa * turnover_aligned_NET
     net_mean_NET <- mean(net_ret_NET, na.rm = TRUE) * 12 * 100
     net_vol_NET  <- sd(net_ret_NET, na.rm = TRUE) * sqrt(12) * 100
     net_SR_NET   <- net_mean_NET / net_vol_NET
-    
   } else {
-    net_mean_NET <- NA
-    net_vol_NET  <- NA
-    net_SR_NET   <- NA
+    net_mean_NET <- gross_mean["NET"]
+    net_vol_NET  <- gross_vol["NET"]
+    net_SR_NET   <- SR["NET"]
   }
   
   panel_B <- data.frame(
-    Strategy    = c("BH", "MVE", "NET"),
-    Turnover    = c("0", "–", sprintf("%.4f", avg_turnover_NET)),
-    Net_Mean    = c(sprintf("%.2f", gross_mean["EW"]),
-                    sprintf("%.2f", gross_mean["MVE"]),
-                    sprintf("%.2f", net_mean_NET)),
-    Net_Vol     = c(sprintf("%.2f", gross_vol["EW"]),
-                    sprintf("%.2f", gross_vol["MVE"]),
-                    sprintf("%.2f", net_vol_NET)),
-    Net_SR      = c(sprintf("%.2f", SR["EW"]),
-                    sprintf("%.2f", SR["MVE"]),
-                    sprintf("%.2f", net_SR_NET)),
-    MDD         = c(sprintf("%.2f", mdd_EW),
-                    sprintf("%.2f", mdd_MVE),
-                    sprintf("%.2f", mdd_NET)),
+    Strategy = c("BH", "MVE", "NET"),
+    Turnover = c(sprintf("%.4f", 0),
+                 sprintf("%.4f", avg_turnover_MVE),
+                 sprintf("%.4f", avg_turnover_NET)),
+    Net_Mean = c(sprintf("%.2f", gross_mean["EW"]),
+                 sprintf("%.2f", net_mean_MVE),
+                 sprintf("%.2f", net_mean_NET)),
+    Net_Vol  = c(sprintf("%.2f", gross_vol["EW"]),
+                 sprintf("%.2f", net_vol_MVE),
+                 sprintf("%.2f", net_vol_NET)),
+    Net_SR   = c(sprintf("%.2f", SR["EW"]),
+                 sprintf("%.2f", net_SR_MVE),
+                 sprintf("%.2f", net_SR_NET)),
+    MDD      = c(sprintf("%.2f", mdd_EW),
+                 sprintf("%.2f", mdd_MVE),
+                 sprintf("%.2f", mdd_NET)),
     stringsAsFactors = FALSE
   )
   
   list(Panel_A = panel_A, Panel_B = panel_B)
 }
 
-table_2 <- create_table_2(returns_for_tables, turnover_vec = turnover_vec)
+table_2 <- create_table_2(
+  returns_df = returns_for_tables,
+  turnover_vec = turnover_vec_NET,
+  turnover_vec_MVE = turnover_vec_MVE
+)
+
 cat("\n========== TABLE 2 Panel A: Benchmark Comparison ==========\n")
 print(table_2$Panel_A)
+
 cat("\n========== TABLE 2 Panel B: Performance Measures ==========\n")
 print(table_2$Panel_B)
 
