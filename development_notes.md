@@ -48,5 +48,3 @@ Kornel (18:00): Updated the Performance measures: annualized some values and cha
 Kornel (21:30): Change that the 'target' for optimal MVE weights is that they sum up to one, I will explain in the appendix why in more deteil that it already is
 
 30/03/2026 - Yadhu (05:25): Changed some parts of our GARCH calculation. Estimated through t-distribution because our forecasts have fat tails. We can always discuss and revert back to normal though. Sorry for the long layoff, got busy with family stuff
-
-31/03/2026 - Kamakshi (19:55): added ledoit wolfe sharpe test using PeerPerformance package

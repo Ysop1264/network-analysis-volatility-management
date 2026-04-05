@@ -301,28 +301,38 @@ fit_garch_expanding_monthly <- function(
     fixed.pars = as.list(fixed_pars)
   )
   
-  # forecast entire sample 
+    # forecast entire remaining sample with fixed parameters
   fc <- ugarchforecast(
     spec_fixed,
     data = ret,
+    out.sample = n - t_refit,
     n.ahead = 1,
     n.roll = n - t_refit - 1
   )
-  
+
   mu_fc <- as.numeric(fitted(fc))
   sigma_fc <- as.numeric(sigma(fc))
-  
-  out_list <- vector("list", length(mu_fc))
-  
-  for (j in seq_along(mu_fc)) {
-    idx <- j + t_refit
+
+  n_oos <- n - t_refit
+  if (length(mu_fc) != n_oos || length(sigma_fc) != n_oos) {
+    stop("Forecast length does not match out-of-sample length.")
+  }
+
+  out_list <- vector("list", n_oos)
+
+  for (j in seq_len(n_oos)) {
+    idx <- t_refit + j
     r_next <- ret[idx]
-    
+
     sigma_h <- sigma_fc[j]
     mu_h <- mu_fc[j]
-    
-    z_next <- if (is.na(sigma_h) || sigma_h <= 0) NA_real_ else (r_next - mu_h) / sigma_h
-    
+
+    z_next <- if (is.na(sigma_h) || sigma_h <= 0) {
+      NA_real_
+    } else {
+      (r_next - mu_h) / sigma_h
+    }
+
     out_list[[j]] <- data.frame(
       date = dates[idx],
       mu = mu_h,
@@ -998,6 +1008,7 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
                             S_update_freq = c("monthly", "quarterly", "yearly", "biyearly"),
                             trace = TRUE) {
   frozen_ab <- NULL
+  frozen_S <- NULL
   Z_block <- as.matrix(Z_block)
   SIGMA_block <- as.matrix(SIGMA_block)
   dates_block <- as.Date(dates_block)
@@ -1053,14 +1064,33 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
 
     reused_S <- FALSE
 
-    if (is.null(S_builder)) {
-      S_target <- safe_cor(Z_insample)
-      } else {
+  #   if (is.null(S_builder)) {
+  #     S_target <- safe_cor(Z_insample)
+  #     } else {
+  #   if (is.null(last_S_target) || !identical(current_S_period, last_S_period)) {
+  #   if (trace) {
+  #     message("Updating S_target via ", S_update_freq,
+  #             " NL shrinkage at ", as.character(blk$refit_date))
+  #   }
+  #   S_target <- S_builder(Z_insample)
+  #   last_S_target <- S_target
+  #   last_S_period <- current_S_period
+  # } else {
+  #   S_target <- last_S_target
+  #   reused_S <- TRUE
+  # }
+
+  if (!is.null(frozen_S)) {
+  S_target <- frozen_S
+  reused_S <- TRUE
+  } else if (is.null(S_builder)) {
+    S_target <- safe_cor(Z_insample)
+  } else {
     if (is.null(last_S_target) || !identical(current_S_period, last_S_period)) {
-    if (trace) {
-      message("Updating S_target via ", S_update_freq,
+      if (trace) {
+        message("Updating S_target via ", S_update_freq,
               " NL shrinkage at ", as.character(blk$refit_date))
-    }
+      }
     S_target <- S_builder(Z_insample)
     last_S_target <- S_target
     last_S_period <- current_S_period
@@ -1100,109 +1130,175 @@ run_dcc_monthly <- function(Z_block, SIGMA_block, dates_block,
     #   }
     # )
     if (is.null(frozen_ab)) {
-      dcc_fit <- tryCatch(
-        estimate_dcc(Z_insample, S_target),
-        error = function(e) {
-          cat("DCC failed at", as.character(blk$refit_date), ":", e$message, "\n")
-          return(NULL)
-        }
-      )
-      
-      if (!is.null(dcc_fit)) {
-        frozen_ab <- c(dcc_fit$a, dcc_fit$b)
-      }
-      
-    } else {
-      dcc_fit <- list(
-        a = frozen_ab[1],
-        b = frozen_ab[2],
-        S = S_target,
-        Q_T = dcc_filter(Z_insample, frozen_ab[1], frozen_ab[2], S_target)$Q_T
-      )
+  dcc_fit <- tryCatch(
+    estimate_dcc(Z_insample, S_target),
+    error = function(e) {
+      cat("DCC failed at", as.character(blk$refit_date), ":", e$message, "\n")
+      return(NULL)
     }
+  )
 
-    if (is.null(dcc_fit)) {
-      out[[i]] <- list(
-        refit_date = blk$refit_date,
-        forecast_dates = blk$forecast_dates,
-        a = NA_real_,
-        b = NA_real_,
-        R_forecasts = NULL,
-        Q_forecasts = NULL,
-        H_forecasts = NULL,
-        H_month = NULL
-      )
-      next
-    }
+  if (!is.null(dcc_fit)) {
+    frozen_ab <- c(dcc_fit$a, dcc_fit$b)
+    frozen_S  <- dcc_fit$S
+  }
 
-    dcc_fc <- forecast_dcc_correlations(
-      Q_T = dcc_fit$Q_T,
-      S = dcc_fit$S,
-      a = dcc_fit$a,
-      b = dcc_fit$b,
-      h = length(blk$forecast_idx)
-    )
+} else {
+  dcc_fit <- list(
+    a = frozen_ab[1],
+    b = frozen_ab[2],
+    S = frozen_S,
+    Q_T = dcc_filter(Z_insample, frozen_ab[1], frozen_ab[2], frozen_S)$Q_T
+  )
+}
 
-    H_fc <- build_cov_from_sigma_and_R(
-      SIGMA_future = SIGMA_future,
-      R_list = dcc_fc$R,
-      dates_future = blk$forecast_dates
-    )
+if (is.null(dcc_fit)) {
+  out[[i]] <- list(
+    refit_date = blk$refit_date,
+    forecast_dates = blk$forecast_dates,
+    a = NA_real_,
+    b = NA_real_,
+    R_forecasts = NULL,
+    Q_forecasts = NULL,
+    H_forecasts = NULL,
+    H_month = NULL
+  )
+  next
+}
 
-    H_month <- (1/length(blk$forecast_idx)) * aggregate_monthly_cov(H_fc) 
+ dcc_fc <- forecast_dcc_correlations(
+    Q_T = dcc_fit$Q_T,
+    S = dcc_fit$S,
+    a = dcc_fit$a,
+    b = dcc_fit$b,
+    h = length(blk$forecast_idx)
+  )
 
-    out[[i]] <- list(
-      refit_month = blk$refit_month,
-      refit_date = blk$refit_date,
-      insample_idx = blk$insample_idx,
-      forecast_idx = blk$forecast_idx,
-      forecast_dates = blk$forecast_dates,
-      S_period = current_S_period,
-      a = dcc_fit$a,
-      b = dcc_fit$b,
-      S = dcc_fit$S,
-      Q_T = dcc_fit$Q_T,
-      R_forecasts = dcc_fc$R,
-      Q_forecasts = dcc_fc$Q,
-      H_forecasts = H_fc,
-      H_month = H_month
-    )
+  H_fc <- build_cov_from_sigma_and_R(
+    SIGMA_future = SIGMA_future,
+    R_list = dcc_fc$R,
+    dates_future = blk$forecast_dates
+  )
+
+  H_month <- (1/length(blk$forecast_idx)) * aggregate_monthly_cov(H_fc) 
+
+  out[[i]] <- list(
+    refit_month = blk$refit_month,
+    refit_date = blk$refit_date,
+    insample_idx = blk$insample_idx,
+    forecast_idx = blk$forecast_idx,
+    forecast_dates = blk$forecast_dates,
+    S_period = current_S_period,
+    a = dcc_fit$a,
+    b = dcc_fit$b,
+    S = dcc_fit$S,
+    Q_T = dcc_fit$Q_T,
+    R_forecasts = dcc_fc$R,
+    Q_forecasts = dcc_fc$Q,
+    H_forecasts = H_fc,
+    H_month = H_month
+  )
   }
 
   names(out) <- sapply(out, function(x) as.character(x$refit_date))
   out
 }
 
-# Subset test for time check (fama french, momentum and random)
-test_data_cmp <- managed_portfolios %>%
-  select(
-    date,
-    mkt_excess,
-    smb,
-    hml,
-    rmw,
-    cma,
-    mom,
-    agric,     
-    food       
-  ) %>%
-  slice(1:1100)
+# test_data_all_medium <- managed_portfolios %>%
+#   slice(1:1800)
 
-time_garch_cmp <- system.time({
-  garch_cmp <- run_all_garch_monthly(
-    test_data_cmp,
+# cat("Rows in medium test:", nrow(test_data_all_medium), "\n")
+# cat("Number of assets/factors:", ncol(test_data_all_medium) - 1, "\n")
+
+# time_garch_all_medium <- system.time({
+#   garch_all_medium <- run_all_garch_monthly(
+#     test_data_all_medium,
+#     date_col = "date",
+#     init_window = 504
+#   )
+# })
+
+# print(time_garch_all_medium)
+
+# blocks_all_medium <- build_garch_blocks(garch_all_medium)
+
+# time_dcc_all_medium <- system.time({
+#   dcc_all_medium <- run_dcc_monthly(
+#     Z_block = blocks_all_medium$Z,
+#     SIGMA_block = blocks_all_medium$SIGMA,
+#     dates_block = blocks_all_medium$dates,
+#     min_corr_window = 252,
+#     rolling_window = 504,
+#     S_builder = build_nlshrink_target,
+#     S_update_freq = "monthly",
+#     trace = TRUE
+#   )
+# })
+
+# print(time_dcc_all_medium)
+
+all_data_full <- managed_portfolios
+
+cat("Rows in full sample:", nrow(all_data_full), "\n")
+cat("Number of assets/factors:", ncol(all_data_full) - 1, "\n")
+
+time_garch_all_full <- system.time({
+  garch_all_full <- run_all_garch_monthly(
+    all_data_full,
     date_col = "date",
     init_window = 504
   )
 })
 
-print(time_garch_cmp)
+print(time_garch_all_full)
 
-time_blocks_cmp <- system.time({
-  blocks_cmp <- build_garch_blocks(garch_cmp)
+blocks_all_full <- build_garch_blocks(garch_all_full)
+
+time_dcc_all_full <- system.time({
+  dcc_all_full <- run_dcc_monthly(
+    Z_block = blocks_all_full$Z,
+    SIGMA_block = blocks_all_full$SIGMA,
+    dates_block = blocks_all_full$dates,
+    min_corr_window = 252,
+    rolling_window = 504,
+    S_builder = build_nlshrink_target,
+    S_update_freq = "monthly",
+    trace = TRUE
+  )
 })
 
-print(time_blocks_cmp)
+print(time_dcc_all_full)
+
+# Subset test for time check (fama french, momentum and random)
+# test_data_cmp <- managed_portfolios %>%
+#   select(
+#     date,
+#     mkt_excess,
+#     smb,
+#     hml,
+#     rmw,
+#     cma,
+#     mom,
+#     agric,     
+#     food       
+#   ) %>%
+#   slice(1:1100)
+
+# time_garch_cmp <- system.time({
+#   garch_cmp <- run_all_garch_monthly(
+#     test_data_cmp,
+#     date_col = "date",
+#     init_window = 504
+#   )
+# })
+
+# print(time_garch_cmp)
+
+# time_blocks_cmp <- system.time({
+#   blocks_cmp <- build_garch_blocks(garch_cmp)
+# })
+
+# print(time_blocks_cmp)
 
 # DONT RUN (NOT NEEDED)
 # time_dcc_quarterly <- system.time({
@@ -1235,20 +1331,20 @@ print(time_blocks_cmp)
 
 #print(time_dcc_yearly)
 
-time_dcc_biyearly <- system.time({
-  dcc_biyearly <- run_dcc_monthly(
-    Z_block = blocks_cmp$Z,
-    SIGMA_block = blocks_cmp$SIGMA,
-    dates_block = as.Date(rownames(blocks_cmp$Z)),
-    min_corr_window = 252,
-    rolling_window = 504,
-    S_builder = build_nlshrink_target,
-    S_update_freq = "biyearly",
-    trace = TRUE
-  )
-})
+# time_dcc_biyearly <- system.time({
+#   dcc_biyearly <- run_dcc_monthly(
+#     Z_block = blocks_cmp$Z,
+#     SIGMA_block = blocks_cmp$SIGMA,
+#     dates_block = as.Date(rownames(blocks_cmp$Z)),
+#     min_corr_window = 252,
+#     rolling_window = 504,
+#     S_builder = build_nlshrink_target,
+#     S_update_freq = "biyearly",
+#     trace = TRUE
+#   )
+# })
 
-print(time_dcc_biyearly)
+# print(time_dcc_biyearly)
 
 
 # get_dcc_param_summary <- function(dcc_obj) {
@@ -1386,8 +1482,6 @@ print(time_dcc_biyearly)
 #      main = "Distribution of Covariance Differences (Q vs Y)",
 #      xlab = "Frobenius Distance")
 # dev.off()
-
-head(dcc_biyearly)
 
 # Adjacency matrix construction 
 # @param sigma_hat is the forecasted covariance matrix 
@@ -1745,60 +1839,109 @@ compute_equal_weight_benchmark <- function(realized_obj, common_dates = NULL) {
   )
 }
 
-# =================================================
-# Run for current test case
-# first 1100 obs, first 8 factors
-# =================================================
-factor_names_8 <- colnames(test_data_cmp[, -1, drop = FALSE])
+# # =================================================
+# # Run for current test case
+# # first 1100 obs, first 8 factors
+# # =================================================
+# factor_names_8 <- colnames(test_data_cmp[, -1, drop = FALSE])
 
-net_biyearly <- run_network_outputs(
-  dcc_list = dcc_biyearly,
-  # tau = sqrt(0.05),
-  tau = 0.05, 
+# net_biyearly <- run_network_outputs(
+#   dcc_list = dcc_biyearly,
+#   # tau = sqrt(0.05),
+#   tau = 0.05, 
+#   lambda_pos = 0.1,
+#   lambda_neg = 0.1,
+#   asset_names = factor_names_8
+# )
+
+# realized_biyearly <- extract_realized_forecast_returns(
+#   dcc_list = dcc_biyearly,
+#   returns_df = test_data_cmp
+# )
+
+# # force network output column names to match realized returns exactly
+# colnames(net_biyearly$w_tilde) <- colnames(realized_biyearly$realized_returns)
+# colnames(net_biyearly$penalty) <- colnames(realized_biyearly$realized_returns)
+# colnames(net_biyearly$spillover_pos) <- colnames(realized_biyearly$realized_returns)
+# colnames(net_biyearly$spillover_neg) <- colnames(realized_biyearly$realized_returns)
+
+# network_returns_biyearly <- compute_network_returns(
+#   net_obj = net_biyearly,
+#   realized_obj = realized_biyearly
+# )
+
+# benchmark_biyearly <- compute_equal_weight_benchmark(
+#   realized_obj = realized_biyearly,
+#   common_dates = as.character(network_returns_biyearly$date)
+# )
+
+# # optional combined object for later performance code
+# network_vs_benchmark_biyearly <- network_returns_biyearly |>
+#   left_join(benchmark_biyearly, by = "date")
+
+# # inspect
+# net_biyearly$summary
+# net_biyearly$w_tilde
+# net_biyearly$penalty
+# net_biyearly$spillover_pos
+# net_biyearly$spillover_neg
+
+# realized_biyearly$realized_returns
+
+# network_returns_biyearly
+# benchmark_biyearly
+# network_vs_benchmark_biyearly
+
+# =================================================
+# Run network pipeline for current full-sample setup
+# =================================================
+
+factor_names_all <- colnames(managed_portfolios[, -1, drop = FALSE])
+
+net_all <- run_network_outputs(
+  dcc_list = dcc_all_full,
+  tau = 0.05,
   lambda_pos = 0.1,
   lambda_neg = 0.1,
-  asset_names = factor_names_8
+  asset_names = factor_names_all
 )
 
-realized_biyearly <- extract_realized_forecast_returns(
-  dcc_list = dcc_biyearly,
-  returns_df = test_data_cmp
+realized_all <- extract_realized_forecast_returns(
+  dcc_list = dcc_all_full,
+  returns_df = managed_portfolios
 )
 
 # force network output column names to match realized returns exactly
-colnames(net_biyearly$w_tilde) <- colnames(realized_biyearly$realized_returns)
-colnames(net_biyearly$penalty) <- colnames(realized_biyearly$realized_returns)
-colnames(net_biyearly$spillover_pos) <- colnames(realized_biyearly$realized_returns)
-colnames(net_biyearly$spillover_neg) <- colnames(realized_biyearly$realized_returns)
+colnames(net_all$w_tilde)       <- colnames(realized_all$realized_returns)
+colnames(net_all$penalty)       <- colnames(realized_all$realized_returns)
+colnames(net_all$spillover_pos) <- colnames(realized_all$realized_returns)
+colnames(net_all$spillover_neg) <- colnames(realized_all$realized_returns)
 
-network_returns_biyearly <- compute_network_returns(
-  net_obj = net_biyearly,
-  realized_obj = realized_biyearly
+network_returns_all <- compute_network_returns(
+  net_obj = net_all,
+  realized_obj = realized_all
 )
 
-benchmark_biyearly <- compute_equal_weight_benchmark(
-  realized_obj = realized_biyearly,
-  common_dates = as.character(network_returns_biyearly$date)
+benchmark_all <- compute_equal_weight_benchmark(
+  realized_obj = realized_all,
+  common_dates = as.character(network_returns_all$date)
 )
 
-# optional combined object for later performance code
-network_vs_benchmark_biyearly <- network_returns_biyearly |>
-  left_join(benchmark_biyearly, by = "date")
+network_vs_benchmark_all <- network_returns_all |>
+  left_join(benchmark_all, by = "date")
 
 # inspect
-net_biyearly$summary
-net_biyearly$w_tilde
-net_biyearly$penalty
-net_biyearly$spillover_pos
-net_biyearly$spillover_neg
+# net_all$summary
+# net_all$w_tilde
+# net_all$penalty
+# net_all$spillover_pos
+# net_all$spillover_neg
 
-realized_biyearly$realized_returns
+# realized_all$realized_returns
 
-network_returns_biyearly
-benchmark_biyearly
-network_vs_benchmark_biyearly
-
-library(igraph)
+# network_returns_all
+# benchmark_all
+# network_vs_benchmark_all
 
 # Factor labels (nicer names in plots)
 factor_labels <- c(
@@ -2042,11 +2185,11 @@ colnames(benchmarks_returns) <- c("month", "EW", "MVE")
 
 # Functions for getting the performance measures for network analysis 
 # calculate scaling constant c to match volatility of BH 
-vol_target <- sd(network_vs_benchmark_biyearly$EW_benchmark, na.rm=T)
-vol_strat_unscaled <- sd(network_vs_benchmark_biyearly$network_return_unscaled, na.rm=T)
-c_scaling <- vol_target / vol_strat_unscaled 
-# final network return series 
-network_vs_benchmark_biyearly <- network_vs_benchmark_biyearly %>% 
+vol_target <- sd(network_vs_benchmark_all$EW_benchmark, na.rm = TRUE)
+vol_strat_unscaled <- sd(network_vs_benchmark_all$network_return_unscaled, na.rm = TRUE)
+c_scaling <- vol_target / vol_strat_unscaled
+
+network_vs_benchmark_all <- network_vs_benchmark_all %>%
   mutate(net_strategy_return = network_return_unscaled * c_scaling)
 
 # ====================================
@@ -2054,32 +2197,56 @@ network_vs_benchmark_biyearly <- network_vs_benchmark_biyearly %>%
 # ====================================
 # Cumulative wealth dataframe
 # Prepare the data by joining NET returns to the benchmarks (UNCOMMENT THIS WHEN RUNNING FULL SAMPLE)
-combined_returns <- benchmarks_returns |>
-  left_join(network_vs_benchmark_biyearly |> select(date, net_strategy_return),
-            by = c("month" = "date"))
+# Build monthly network returns with aligned dates
+network_monthly <- network_vs_benchmark_all %>%
+  mutate(month = floor_date(date, "month")) %>%
+  group_by(month) %>%
+  summarise(
+    net_strategy_return = first(net_strategy_return),
+    .groups = "drop"
+  )
 
-# Calculate cumulative wealth
-cumulative_wealth_df <- combined_returns |>
+# Join to benchmark monthly returns
+combined_returns <- benchmarks_returns %>%
+  left_join(network_monthly, by = "month") %>%
+  arrange(month)
+
+# Build cumulative wealth safely
+first_net_idx <- which(!is.na(combined_returns$net_strategy_return))[1]
+
+cumulative_wealth_df <- combined_returns %>%
   mutate(
     EW = cumprod(1 + EW),
     MVE = cumprod(1 + MVE),
-    NET = cumprod(1 + net_strategy_return)
+    NET = NA_real_
   )
+
+if (!is.na(first_net_idx)) {
+  cumulative_wealth_df$NET[first_net_idx:nrow(cumulative_wealth_df)] <-
+    cumprod(1 + cumulative_wealth_df$net_strategy_return[first_net_idx:nrow(cumulative_wealth_df)])
+}
+
+png("cumulative_wealth.png", width = 900, height = 600)
 
 axis <- par(lab = c(20, 8, 5))
 max_y <- max(cumulative_wealth_df$NET, cumulative_wealth_df$MVE, na.rm = TRUE)
+
 plot(x = cumulative_wealth_df$month, y = cumulative_wealth_df$EW,
      xlab = "Date", ylab = "Cumulative return",
      type = "l", col = "black", lwd = 1, lty = 1, ylim = c(0, max_y))
 
 y_ticks <- pretty(c(0, max_y))
 abline(h = y_ticks, col = "grey85", lty = 1)
+
 lines(x = cumulative_wealth_df$month, y = cumulative_wealth_df$EW, col = "black", lwd = 1)
 lines(x = cumulative_wealth_df$month, y = cumulative_wealth_df$MVE, col = "blue", lty = 2, lwd = 1.5)
 lines(x = cumulative_wealth_df$month, y = cumulative_wealth_df$NET, col = "red", lty = 3, lwd = 2)
+
 legend("topleft", legend = c("BH", "MVE", "NET"),
        col = c("black", "blue", "red"), lty = c(1, 2, 3),
        lwd = 2, bty = "n", cex = 0.8)
+
+dev.off()
 
 # Rolling Sharpe Ratio
 rolling_SR_df <- data.frame(
@@ -2095,34 +2262,72 @@ for(i in 12:nrow(combined_returns)){
   rolling_SR_df$SR_NET[i-11] <- mean(combined_returns$net_strategy_return[(i-11):i]) / sd(combined_returns$net_strategy_return[(i-11):i]) * sqrt(12) # Added this
 }
 
-plot(x = rolling_SR_df$date, y = rolling_SR_df$SR_EW, type = "l", xlab = "Date", ylab = "Rolling SR", lty = 1, col = "black", ylim = range(c(rolling_SR_df$SR_EW, rolling_SR_df$SR_MVE, rolling_SR_df$SR_NET), na.rm = TRUE))
+png("rolling_sharpe.png", width = 900, height = 600)
+
+plot(x = rolling_SR_df$date, y = rolling_SR_df$SR_EW,
+     type = "l", xlab = "Date", ylab = "Rolling SR",
+     lty = 1, col = "black",
+     ylim = range(c(rolling_SR_df$SR_EW,
+                    rolling_SR_df$SR_MVE,
+                    rolling_SR_df$SR_NET), na.rm = TRUE))
+
 y_ticks <- pretty(rolling_SR_df$SR_EW)
 abline(h = y_ticks, col = "grey85", lty = 1)
+
 lines(x = rolling_SR_df$date, y = rolling_SR_df$SR_EW, col = "black", lty = 1)
 lines(x = rolling_SR_df$date, y = rolling_SR_df$SR_MVE, col = "blue", lty = 2)
-lines(x = rolling_SR_df$date, y = rolling_SR_df$SR_NET, col = "red", lty = 3, lwd = 2) # Added the red line
-legend("topright", legend = c("BH", "MVE", "NET"), col = c("black", "blue", "red"), lty = c(1,2, 3), bty = "n", lwd = 2, cex = 0.8)
+lines(x = rolling_SR_df$date, y = rolling_SR_df$SR_NET, col = "red", lty = 3, lwd = 2)
 
+legend("topright", legend = c("BH", "MVE", "NET"),
+       col = c("black", "blue", "red"),
+       lty = c(1, 2, 3), bty = "n", lwd = 2, cex = 0.8)
+
+dev.off()
 # Drawdown figure
 drawdown_df <- cumulative_wealth_df |>
   arrange(month) |>
   mutate(
-    EW_drawdown = EW / cummax(EW) - 1,
+    EW_drawdown  = EW / cummax(EW) - 1,
     MVE_drawdown = MVE / cummax(MVE) - 1,
-    NET_drawdown = NET / cummax(NET) - 1 # Added this
+    NET_drawdown = NA_real_
   )
 
-plot(x = drawdown_df$month, y = drawdown_df$EW_drawdown, type = "l", ylim = c(-0.6, 0), 
+net_valid_idx <- which(!is.na(drawdown_df$NET))
+
+if (length(net_valid_idx) > 0) {
+  first_net <- min(net_valid_idx)
+  net_path <- drawdown_df$NET[first_net:nrow(drawdown_df)]
+  drawdown_df$NET_drawdown[first_net:nrow(drawdown_df)] <- net_path / cummax(net_path) - 1
+}
+
+png("drawdown.png", width = 900, height = 600)
+
+plot(x = drawdown_df$month, y = drawdown_df$EW_drawdown,
+     type = "l", ylim = c(-0.6, 0),
      xlab = "Date", ylab = "Drawdown")
+
 y_ticks <- pretty(drawdown_df$EW_drawdown)
 abline(h = y_ticks, col = "grey85", lty = 1)
 
 lines(x = drawdown_df$month, y = drawdown_df$EW_drawdown, col = "black", lty = 1)
 lines(x = drawdown_df$month, y = drawdown_df$MVE_drawdown, col = "blue", lty = 2)
-lines(x = drawdown_df$month, y = drawdown_df$NET_drawdown, col = "red", lty = 3, lwd = 2) # Added the red line
+lines(x = drawdown_df$month, y = drawdown_df$NET_drawdown, col = "red", lty = 3, lwd = 2)
 
-legend("bottomright", legend = c("BH", "MVE", "NET"), col = c("black", "blue", "red"), lty = c(1,2, 3), bty = "n", lwd = 2, cex = 0.8)
+legend("bottomright", legend = c("BH", "MVE", "NET"),
+       col = c("black", "blue", "red"),
+       lty = c(1, 2, 3), bty = "n", lwd = 2, cex = 0.8)
 
+dev.off()
+
+sum(is.na(cumulative_wealth_df$NET))
+sum(is.na(cumulative_wealth_df$MVE))
+
+sum(is.infinite(cumulative_wealth_df$NET))
+sum(is.infinite(cumulative_wealth_df$MVE))
+
+which(is.na(cumulative_wealth_df$NET))[1:10]
+
+cumulative_wealth_df[which(is.na(cumulative_wealth_df$NET)), ]
 # ================================================
 # Performance evaluation and alpha testing
 # ================================================
@@ -2274,3 +2479,114 @@ print(sr_diff_net_mve)
 # ========================================
 # Table creation
 # ========================================
+
+
+
+
+
+#' Function creates the Panel A of the main results table, 
+#' it contains gross mean, volatility, SR, and alphas for 
+#' both benchmarks
+#'
+#'@param returns_df Data frame with date, and returns corresponding to:
+#' equally-weighted-buy and hold (EW), mean-variance efficient (MVE) and
+#' netowrk strategy (NET)
+#'
+#'@return Panel A of the main results table
+#'
+main_results_table_panel_A <- function(returns_df){
+  
+  if(class(returns_df[[1]]) == "Date"){
+    returns_df <- returns_df[,-1]
+  }
+  
+  # Computing the input for the table 
+  gross_mean_return <- colMeans(returns_df) * 12 * 100
+  gross_volatility <- sapply(returns_df, sd) * sqrt(12) * 100
+  SR <- gross_mean_return/gross_volatility
+  alpha_BH <- c(0,0,0)
+  alpha_MVE <- c(0,0,0)
+  
+  results <- data.frame(
+    Strategy = c("BH", "MVE", "NET"),
+    Gross_mean_return = gross_mean_return,
+    Gross_volatility = gross_volatility,
+    Sharpe_ratio = SR,
+    Alpha_BH <- alpha_BH,
+    Alpha_MVE <- alpha_MVE
+  )
+  
+  
+  return(results)
+}
+
+
+#'
+#'Function creates the sub-period analysis table,
+#'it contians mean gross return, gross volatility, SR, 
+#'alphas and t-statistics
+#'
+#'@param returns_df Data frame with date, and returns corresponding to:
+#' equally-weighted-buy and hold (EW), mean-variance efficient (MVE) and
+#' netowrk strategy (NET)
+#'
+#'@return Table
+#'
+sub_period_analysis_table <- function(returns_df){
+  
+  # Setting dates for first period
+  start_date_period_1 <- as.Date("1973-01-01")
+  end_date_period_1 <- as.Date("2009-12-13")
+  returns_df_period_1 <- returns_df |> filter (date >= start_date_period_1 & date <= end_date_period_1)
+  
+  # Setting dates for second period
+  start_date_period_2 <- as.Date("2010-01-01")
+  end_date_period_2 <- as.Date("2017-12-31")
+  returns_df_period_2 <- returns_df |> filter (date >= start_date_period_2 & date <= end_date_period_2)
+  
+  # Setting dates for third period
+  start_date_period_3 <- as.Date("2018-01-01")
+  end_date_period_3 <- as.Date("2026-01-31")
+  returns_df_period_3 <- returns_df |> filter (date >= start_date_period_3 & date <= end_date_period_3)
+  
+  if(class(returns_df[[1]]) == "Date"){
+    returns_df <- returns_df[,-1]
+  }
+  
+  # Calculating gross mean returns
+  gross_mean_return_1 <- colMeans(returns_df_period_1) * 12 * 100
+  gross_mean_return_2 <- colMeans(returns_df_period_2) * 12 * 100
+  gross_mean_return_3 <- colMeans(returns_df_period_3) * 12 * 100
+  
+  # Calculating gross volaitlities
+  gross_volatility_1 <- sapply(returns_df_period_1, sd) * sqrt(12) * 100
+  gross_volatility_2 <- sapply(returns_df_period_2, sd) * sqrt(12) * 100
+  gross_volatility_3 <- sapply(returns_df_period_3, sd) * sqrt(12) * 100
+  
+  # Calculating SR's
+  SR_1 <- gross_mean_return_1/gross_volatility_1
+  SR_2 <- gross_mean_return_2/gross_volatility_2
+  SR_3 <- gross_mean_return_3/gross_volatility_3
+  
+  # Calcualting alphas BH
+  alpha_BH_1 <- c(0,0,0)
+  alpha_BH_2 <- c(0,0,0)
+  alpha_BH_3 <- c(0,0,0)
+  
+  # Calcualting alphas MVE
+  alpha_MVE_1 <- c(0,0,0)
+  alpha_MVE_2 <- c(0,0,0)
+  alpha_MVE_3 <- c(0,0,0)
+  
+  
+  results <- data.frame(
+    Period = c("1973-2010", "", "", "2010-2018", "", "", "2018-2026", "", ""),
+    Strategy = c("BH", "MVE", "NET", "BH", "MVE", "NET", "BH", "MVE", "NET"),
+    Mean = rbind(gross_mean_return_1, gross_mean_return_2, gross_mean_return_3),
+    Volatility = rbind(gross_volatility_1, gross_volatility_2, gross_volatility_3),
+    Sharpe_ratio = rbind(SR_1, SR_2, SR_3), 
+    Alpha_EW = rbind(alpha_BH_1, alpha_BH_2, alpha_BH_3), 
+    Alpha_MVE = rbind(alpha_MVE_1, alpha_MVE_2, alpha_MVE_3)
+  )
+  
+}
