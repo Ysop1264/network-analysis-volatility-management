@@ -1691,6 +1691,66 @@ sr_diff_net_mve <- sharpe_difference(
 )
 print(sr_diff_net_mve)
 
+compute_turnover_drift <- function(returns_df, weights_df, half_turnover = FALSE) {
+  
+  W_raw <- as.matrix(weights_df[, -1, drop = FALSE])
+  
+  # Normalize weights to sum to 1 in absolute value
+  W <- W_raw / rowSums(abs(W_raw))
+  R <- as.matrix(returns_df[, -1, drop = FALSE])
+  
+  if (nrow(W) != nrow(R)) {
+    stop("weights_df and returns_df must have the same number of rows.")
+  }
+  
+  n <- nrow(W)
+  turnover <- rep(NA_real_, n)
+  
+  for (t in 2:n) {
+    
+    w_prev <- W[t - 1, ]
+    r_t <- R[t, ]
+    
+    # Portfolio gross return over the period using previous weights
+    gross_portfolio_value <- sum(w_prev * (1 + r_t), na.rm = TRUE)
+    
+    # Drifted pre-trade weights before rebalancing at t
+    w_pre <- (w_prev * (1 + r_t)) / gross_portfolio_value
+    
+    # Turnover needed to move from drifted weights to target weights
+    raw_turnover <- sum(abs(W[t, ] - w_pre), na.rm = TRUE)
+    
+    turnover[t] <- if (half_turnover) 0.5 * raw_turnover else raw_turnover
+  }
+  
+  return(turnover)
+}
+
+MVE_returns_weights_df <- MVE_returns_weights_df |> 
+  filter(month > end_date_estimation)
+# Step 1: make sure both use same date column name
+weights_df <- MVE_returns_weights_df |> rename(date = month)
+
+# Step 2: align both datasets
+common_dates <- intersect(weights_df$date, returns_for_tables$date)
+
+weights_df <- weights_df |> filter(date %in% common_dates)
+returns_for_tables <- returns_for_tables |> filter(date %in% common_dates)
+
+nrow(weights_df)
+nrow(returns_for_tables)
+
+turnover_vec <- compute_turnover_drift(
+  returns_df = returns_for_tables,
+  weights_df = weights_df
+)
+head(turnover_vec)
+summary(turnover_vec)
+
+turnover_vec_MVE <- compute_turnover_drift(
+  returns_df = returns_for_tables,
+  weights_df = weights_df   # must contain MVE weights!
+)
 # ========================================
 # TABLE CREATION — All tables from Section 5
 # ========================================
@@ -1750,7 +1810,7 @@ print(table_1)
 #   Columns: Strategy, Turnover, Net mean return, Net volatility, Net SR, MDD
 #   Rows: BH, MVE, NET
 
-create_table_2 <- function(returns_df, w_tilde_mat) {
+create_table_2 <- function(returns_df, turnover_vec = NULL, turnover_vec_MVE = NULL) {
   
   # returns_df should have columns: date, EW, MVE, NET
   returns_only <- returns_df %>% select(EW, MVE, NET)
@@ -1793,11 +1853,7 @@ create_table_2 <- function(returns_df, w_tilde_mat) {
   # --- Panel B ---
   # Turnover from weight changes
   # BH has zero turnover, MVE we approximate as zero for now (static weights, vol-scaled)
-  if (!is.null(w_tilde_mat) && nrow(w_tilde_mat) > 1) {
-    W <- as.matrix(w_tilde_mat)
-    # Normalise weights to sum to 1 each month for turnover calc
-    W_norm <- W / rowSums(abs(W))
-    turnover_vec <- c(NA, rowSums(abs(W_norm[-1, ] - W_norm[-nrow(W_norm), ])))
+  if (!is.null(turnover_vec)) {
     avg_turnover_NET <- mean(turnover_vec, na.rm = TRUE)
   } else {
     avg_turnover_NET <- NA
@@ -1812,24 +1868,19 @@ create_table_2 <- function(returns_df, w_tilde_mat) {
   kappa <- 0.001
   
   # For NET with turnover
-  if (!is.na(avg_turnover_NET)) {
-    # Build full turnover vector aligned with returns
-    n_ret <- nrow(returns_df)
-    n_w <- nrow(w_tilde_mat)
+  if (!is.null(turnover_vec)) {
     
-    # Align turnover to the returns dates
-    if (n_w >= n_ret) {
-      turnover_aligned <- turnover_vec[1:n_ret]
-    } else {
-      # Pad with NAs at the start
-      turnover_aligned <- c(rep(NA, n_ret - n_w), turnover_vec)
-    }
+    turnover_aligned <- turnover_vec
+    
+    # Replace NA (first obs) with 0
     turnover_aligned[is.na(turnover_aligned)] <- 0
     
     net_ret_NET <- returns_df$NET - kappa * turnover_aligned
+    
     net_mean_NET <- mean(net_ret_NET, na.rm = TRUE) * 12 * 100
     net_vol_NET  <- sd(net_ret_NET, na.rm = TRUE) * sqrt(12) * 100
     net_SR_NET   <- net_mean_NET / net_vol_NET
+    
   } else {
     net_mean_NET <- NA
     net_vol_NET  <- NA
@@ -1857,7 +1908,7 @@ create_table_2 <- function(returns_df, w_tilde_mat) {
   list(Panel_A = panel_A, Panel_B = panel_B)
 }
 
-table_2 <- create_table_2(returns_for_tables, net_results_full$w_tilde)
+table_2 <- create_table_2(returns_for_tables, turnover_vec = turnover_vec)
 cat("\n========== TABLE 2 Panel A: Benchmark Comparison ==========\n")
 print(table_2$Panel_A)
 cat("\n========== TABLE 2 Panel B: Performance Measures ==========\n")
@@ -2464,38 +2515,3 @@ table_6B_filled <- bind_rows(
 
 cat("\n========== TABLE 6 Panel B: Robustness (Estimation) ==========\n")
 print(table_6B_filled)
-
-
-
-
-compute_turnover_drift <- function(returns_df, weights_df, half_turnover = FALSE) {
-  
-  W <- as.matrix(weights_df[, -1, drop = FALSE])
-  R <- as.matrix(returns_df[, -1, drop = FALSE])
-  
-  if (nrow(W) != nrow(R)) {
-    stop("weights_df and returns_df must have the same number of rows.")
-  }
-  
-  n <- nrow(W)
-  turnover <- rep(NA_real_, n)
-  
-  for (t in 2:n) {
-    
-    w_prev <- W[t - 1, ]
-    r_t <- R[t, ]
-    
-    # Portfolio gross return over the period using previous weights
-    gross_portfolio_value <- sum(w_prev * (1 + r_t), na.rm = TRUE)
-    
-    # Drifted pre-trade weights before rebalancing at t
-    w_pre <- (w_prev * (1 + r_t)) / gross_portfolio_value
-    
-    # Turnover needed to move from drifted weights to target weights
-    raw_turnover <- sum(abs(W[t, ] - w_pre), na.rm = TRUE)
-    
-    turnover[t] <- if (half_turnover) 0.5 * raw_turnover else raw_turnover
-  }
-  
-  return(turnover)
-}
