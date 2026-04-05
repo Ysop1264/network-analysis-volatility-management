@@ -2459,3 +2459,38 @@ table_6B_filled <- bind_rows(
 
 cat("\n========== TABLE 6 Panel B: Robustness (Estimation) ==========\n")
 print(table_6B_filled)
+
+
+
+
+compute_turnover_drift <- function(returns_df, weights_df, half_turnover = FALSE) {
+  
+  W <- as.matrix(weights_df[, -1, drop = FALSE])
+  R <- as.matrix(returns_df[, -1, drop = FALSE])
+  
+  if (nrow(W) != nrow(R)) {
+    stop("weights_df and returns_df must have the same number of rows.")
+  }
+  
+  n <- nrow(W)
+  turnover <- rep(NA_real_, n)
+  
+  for (t in 2:n) {
+    
+    w_prev <- W[t - 1, ]
+    r_t <- R[t, ]
+    
+    # Portfolio gross return over the period using previous weights
+    gross_portfolio_value <- sum(w_prev * (1 + r_t), na.rm = TRUE)
+    
+    # Drifted pre-trade weights before rebalancing at t
+    w_pre <- (w_prev * (1 + r_t)) / gross_portfolio_value
+    
+    # Turnover needed to move from drifted weights to target weights
+    raw_turnover <- sum(abs(W[t, ] - w_pre), na.rm = TRUE)
+    
+    turnover[t] <- if (half_turnover) 0.5 * raw_turnover else raw_turnover
+  }
+  
+  return(turnover)
+}
