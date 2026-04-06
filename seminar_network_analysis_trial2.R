@@ -1258,7 +1258,7 @@ time_full_pipeline <- system.time({
     distribution = "std",
     should_reestimate = TRUE,
     reestimation_period = 24,
-    tau = 0.05,
+    tau = sqrt(0.025),
     lambda_pos = 0.1,
     lambda_neg = 0.1,
     eps = 1e-4,
@@ -1279,12 +1279,16 @@ network_vs_benchmark_all <- network_vs_benchmark_all %>%
   mutate(net_strategy_return = network_return_unscaled * c_scaling)
 
 # inspect
-net_results_full$summary
+names(net_results_full$summary)
 head(net_results_full$w_tilde)
 head(net_results_full$penalty)
 head(net_results_full$spillover_pos)
 head(net_results_full$spillover_neg)
 network_vs_benchmark_all
+
+names(network_vs_benchmark_all)
+names(net_results_full)
+
 
 
 # =================================================
@@ -1421,6 +1425,10 @@ combined_returns <- benchmarks_returns %>%
   left_join(network_monthly, by = "month") %>%
   arrange(month)
 
+# Keep only months where all plotted strategies exist
+combined_returns_plot <- combined_returns %>%
+  drop_na(EW, MVE, net_strategy_return)
+
 returns_for_tables <- combined_returns %>%
   select(
     date = month,
@@ -1431,19 +1439,13 @@ returns_for_tables <- combined_returns %>%
   drop_na()
 
 # Build cumulative wealth safely
-first_net_idx <- which(!is.na(combined_returns$net_strategy_return))[1]
-
-cumulative_wealth_df <- combined_returns %>%
+# Build cumulative wealth on common sample
+cumulative_wealth_df <- combined_returns_plot %>%
   mutate(
-    EW = cumprod(1 + EW),
+    EW  = cumprod(1 + EW),
     MVE = cumprod(1 + MVE),
-    NET = NA_real_
+    NET = cumprod(1 + net_strategy_return)
   )
-
-if (!is.na(first_net_idx)) {
-  cumulative_wealth_df$NET[first_net_idx:nrow(cumulative_wealth_df)] <-
-    cumprod(1 + cumulative_wealth_df$net_strategy_return[first_net_idx:nrow(cumulative_wealth_df)])
-}
 
 png("cumulative_wealth.png", width = 900, height = 600)
 
@@ -1469,16 +1471,16 @@ dev.off()
 
 # Rolling Sharpe Ratio
 rolling_SR_df <- data.frame(
-  date = combined_returns$month[12:nrow(combined_returns)],
+  date = combined_returns_plot$month[12:nrow(combined_returns_plot)],
   SR_EW = NA_real_,
   SR_MVE = NA_real_,
   SR_NET = NA_real_
 )
 
-for(i in 12:nrow(combined_returns)){
-  rolling_SR_df$SR_EW[i-11]  <- mean(combined_returns$EW[(i-11):i]) / sd(combined_returns$EW[(i-11):i]) * sqrt(12)
-  rolling_SR_df$SR_MVE[i-11] <- mean(combined_returns$MVE[(i-11):i]) / sd(combined_returns$MVE[(i-11):i]) * sqrt(12)
-  rolling_SR_df$SR_NET[i-11] <- mean(combined_returns$net_strategy_return[(i-11):i]) / sd(combined_returns$net_strategy_return[(i-11):i]) * sqrt(12)
+for(i in 12:nrow(combined_returns_plot)){
+  rolling_SR_df$SR_EW[i-11]  <- mean(combined_returns_plot$EW[(i-11):i]) / sd(combined_returns_plot$EW[(i-11):i]) * sqrt(12)
+  rolling_SR_df$SR_MVE[i-11] <- mean(combined_returns_plot$MVE[(i-11):i]) / sd(combined_returns_plot$MVE[(i-11):i]) * sqrt(12)
+  rolling_SR_df$SR_NET[i-11] <- mean(combined_returns_plot$net_strategy_return[(i-11):i]) / sd(combined_returns_plot$net_strategy_return[(i-11):i]) * sqrt(12)
 }
 
 png("rolling_sharpe.png", width = 900, height = 600)
@@ -1743,6 +1745,12 @@ compute_turnover_drift <- function(returns_df, weights_df, half_turnover = FALSE
   turnover
 }
 
+asset_returns_monthly <- managed_portfolios %>%
+  mutate(month = floor_date(date, "month")) %>%
+  group_by(month) %>%
+  summarise(across(-date, ~ prod(1 + .x, na.rm = TRUE) - 1), .groups = "drop") %>%
+  rename(date = month)
+
 canonical_months <- asset_returns_monthly %>%
   filter(date > end_date_estimation) %>%
   transmute(
@@ -1823,6 +1831,244 @@ turnover_vec_MVE <- compute_turnover_drift(
   returns_df = asset_returns_monthly,
   weights_df = MVE_weights_df
 )
+
+# Maing some more figures here, because I changed the weights
+# ====================================
+# Figure data: NET vs MVE weight differences
+# ====================================
+
+common_assets <- intersect(
+  colnames(NET_weights_df),
+  colnames(MVE_weights_df)
+)
+
+common_assets <- setdiff(common_assets, c("date", "MVE_weights"))
+
+weights_gap_df <- NET_weights_df %>%
+  select(date, all_of(common_assets)) %>%
+  inner_join(
+    MVE_weights_df %>%
+      select(date, all_of(common_assets)),
+    by = "date",
+    suffix = c("_NET", "_MVE")
+  ) %>%
+  rowwise() %>%
+  mutate(
+    total_weight_gap = sum(
+      abs(
+        c_across(ends_with("_NET")) -
+        c_across(ends_with("_MVE"))
+      ),
+      na.rm = TRUE
+    )
+  ) %>%
+  ungroup() %>%
+  select(date, total_weight_gap)
+
+jpeg("Weights.jpeg", width = 1000, height = 550, quality = 100)
+
+par(lab = c(20, 8, 5), mar = c(4, 4, 2, 1))
+
+plot(
+  x = weights_gap_df$date,
+  y = weights_gap_df$total_weight_gap,
+  type = "l",
+  lwd = 2,
+  col = "black",
+  xlab = "Date",
+  ylab = expression(sum(abs(w[i]^NET - w[i]^MVE)))
+)
+
+abline(h = pretty(weights_gap_df$total_weight_gap), col = "grey85", lty = 1)
+
+dev.off()
+
+str(net_results_full$per_period, max.level = 2)
+names(net_results_full$per_period[[1]])
+
+# ====================================
+# Compute lambdas from adjacency matrices
+# ====================================
+
+lambda_df <- data.frame(
+  date_raw = as.Date(net_results_full$summary$date),
+
+  lambda_pos = sapply(net_results_full$per_period, function(x) {
+    A_pos <- x$adjacency_pos
+    if (all(A_pos == 0)) return(0)
+    max(Re(eigen(A_pos, only.values = TRUE)$values))
+  }),
+
+  lambda_neg = sapply(net_results_full$per_period, function(x) {
+    A_neg <- x$adjacency_neg
+    if (all(A_neg == 0)) return(0)
+    max(Re(eigen(A_neg, only.values = TRUE)$values))
+  })
+) %>%
+  mutate(month = floor_date(date_raw, "month")) %>%
+  left_join(canonical_months, by = "month") %>%
+  mutate(date = coalesce(date, date_raw)) %>%
+  select(date, lambda_pos, lambda_neg) %>%
+  filter(date %in% common_dates) %>%
+  arrange(date)
+
+png("Lambda+.png", width = 900, height = 600, quality = 100)
+
+par(lab = c(20, 8, 5), mar = c(4, 4, 2, 1))
+
+plot(
+  x = lambda_df$date,
+  y = lambda_df$lambda_pos,
+  type = "l",
+  lwd = 2,
+  col = "black",
+  xlab = "Date",
+  ylab = expression(lambda[m]^"+")
+)
+
+abline(h = pretty(lambda_df$lambda_pos), col = "grey85", lty = 1)
+
+dev.off()
+
+png("Lambda-.png", width = 900, height = 600, quality = 100)
+
+par(lab = c(20, 8, 5), mar = c(4, 4, 2, 1))
+
+plot(
+  x = lambda_df$date,
+  y = lambda_df$lambda_neg,
+  type = "l",
+  lwd = 2,
+  col = "black",
+  xlab = "Date",
+  ylab = expression(lambda[m]^"-")
+)
+
+abline(h = pretty(lambda_df$lambda_neg), col = "grey85", lty = 1)
+
+dev.off()
+
+factor_names <- names(managed_portfolios)[-1]
+factor_labels <- setNames(toupper(factor_names), factor_names)
+factor_labels["mkt_excess"] <- "MKT"
+
+plot_factor_network_filtered <- function(net_obj, date, type = "positive", top_n = 5, edge_quantile = 0.00) {
+
+  idx <- which(as.character(net_obj$summary$date) == as.character(as.Date(date)))
+  if (length(idx) == 0) stop("Date not found")
+
+  period_id <- net_obj$summary$period[idx]
+  pp <- net_obj$per_period[[period_id]]
+
+  if (type == "positive") {
+    A <- pp$adjacency_pos
+    cent <- pp$ec_pos
+    edge_col <- "darkgreen"
+  } else {
+    A <- pp$adjacency_neg
+    cent <- pp$ec_neg
+    edge_col <- "red"
+  }
+
+  A <- (A + t(A)) / 2
+  diag(A) <- 0
+
+  vals <- abs(A[A != 0])
+  if (length(vals) > 0 && edge_quantile > 0) {
+    cutoff <- quantile(vals, edge_quantile, na.rm = TRUE)
+    A[abs(A) < cutoff] <- 0
+  }
+
+  g <- graph_from_adjacency_matrix(
+    A,
+    mode = "undirected",
+    weighted = TRUE,
+    diag = FALSE
+  )
+
+  cent <- cent[V(g)$name]
+  cent[is.na(cent)] <- 0
+  cent_norm <- if (max(cent) > 0) cent / max(cent) else cent
+
+  top_nodes <- names(sort(cent, decreasing = TRUE))[1:min(top_n, length(cent))]
+
+  deg <- degree(g)
+
+  V(g)$size <- ifelse(
+    deg == 0,
+    2.5,
+    3 + 28 * (cent_norm^1.5)
+  )
+
+  V(g)$color <- ifelse(
+    V(g)$name %in% top_nodes,
+    "orange",
+    ifelse(deg == 0, "grey97", "grey90")
+  )
+
+  V(g)$frame.color <- ifelse(V(g)$name %in% top_nodes, "black", NA)
+  V(g)$frame.width <- ifelse(V(g)$name %in% top_nodes, 1.5, 0)
+
+  V(g)$label <- ifelse(
+    V(g)$name %in% top_nodes,
+    ifelse(V(g)$name %in% names(factor_labels),
+           factor_labels[V(g)$name],
+           V(g)$name),
+    ""
+  )
+
+  if (length(E(g)) > 0) {
+    max_w <- max(E(g)$weight)
+    E(g)$width <- if (max_w > 0) 0.5 + 3 * (E(g)$weight / max_w) else 0.5
+  }
+
+  E(g)$color <- adjustcolor(edge_col, alpha.f = 0.3)
+
+  layout <- layout_with_fr(g, niter = 2000)
+
+  plot(
+    g,
+    layout = layout,
+    main = ifelse(type == "positive",
+                  paste("Contagion network -", date),
+                  paste("Hedging network -", date)),
+    vertex.label.cex = 1.0,
+    vertex.label.color = "black"
+  )
+}
+
+plot_network_pair_filtered <- function(net_obj, date, edge_quantile = 0.00) {
+  par(mfrow = c(1, 2))
+  plot_factor_network_filtered(net_obj, date, "positive", top_n = 5, edge_quantile = edge_quantile)
+  plot_factor_network_filtered(net_obj, date, "negative", top_n = 5, edge_quantile = edge_quantile)
+  par(mfrow = c(1, 1))
+}
+
+png("network_graph_2008.png", width = 1200, height = 600)
+plot_network_pair_filtered(net_results_full, "2008-09-30", edge_quantile = 0.00)
+dev.off()
+
+png("network_graph_COVID.png", width = 1200, height = 600)
+plot_network_pair_filtered(net_results_full, "2020-03-31", edge_quantile = 0.00)
+dev.off()
+
+idx <- which(as.character(net_results_full$summary$date) == "2020-03-31")
+pp <- net_results_full$per_period[[net_results_full$summary$period[idx]]]
+
+sum(pp$adjacency_pos != 0)
+sum(pp$adjacency_neg != 0)
+
+summary(pp$adjacency_pos[pp$adjacency_pos != 0])
+summary(pp$adjacency_neg[pp$adjacency_neg != 0])
+
+max(pp$ec_pos)
+max(pp$ec_neg)
+
+mean(pp$adjacency_pos)
+mean(pp$adjacency_neg)
+
+sum(pp$adjacency_pos > 0)
+sum(pp$adjacency_neg > 0)
 # ========================================
 # TABLE CREATION — All tables from Section 5
 # ========================================
