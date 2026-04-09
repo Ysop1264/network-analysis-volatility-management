@@ -75,8 +75,9 @@ factors_joined_excess <- factors_joined |>
     across(-c(date, mkt_excess, smb, hml, rmw, cma, risk_free, mom), ~ . - risk_free)
   )
 
-managed_portfolios <- factors_joined_excess |> select(-risk_free)
-
+#managed_portfolios <- factors_joined_excess |> select(-risk_free)
+#to run for just the industry portfolios
+managed_portfolios <- factors_joined_excess |> select(-risk_free, -mkt_excess, -smb, -hml, -rmw, -cma, -mom)
 print(head(managed_portfolios))
 
 # =================================================
