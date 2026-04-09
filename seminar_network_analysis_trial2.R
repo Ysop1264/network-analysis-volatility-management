@@ -1674,8 +1674,8 @@ lw_sharpe_test <- sharpeTesting(
   control = list(
     type = 2,
     hac = TRUE,
-    nBoot = 999,
-    bBoot = 1
+    nBoot = 499,
+    bBoot = 0
   )
 )
 
@@ -2264,7 +2264,7 @@ create_table_3 <- function(returns_df) {
     tryCatch({
       res <- sharpeTesting(
         x = x, y = y,
-        control = list(type = 2, hac = TRUE, nBoot = 999, bBoot = 0)
+        control = list(type = 2, hac = TRUE, nBoot = 499, bBoot = 0)
       )
       data.frame(
         SR_Diff = res$dsharpe,
