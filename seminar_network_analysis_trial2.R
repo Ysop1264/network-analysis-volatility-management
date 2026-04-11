@@ -16,6 +16,8 @@ install.packages("zoo")
 install.packages("igraph")
 install.packages("PeerPerformance")
 install.packages("xdcclarge")
+install.packages("purrr")
+install.packages("tidyr")
 ####
 
 library(rlang)
@@ -33,6 +35,8 @@ library(rugarch)
 library(igraph)
 library(PeerPerformance)
 library(xdcclarge)
+library(tidyr)
+library(purrr)
 
 # DATA download and transformation
 start_date <- as.Date("1971-01-01")
@@ -75,10 +79,10 @@ factors_joined_excess <- factors_joined |>
     across(-c(date, mkt_excess, smb, hml, rmw, cma, risk_free, mom), ~ . - risk_free)
   )
 
-#managed_portfolios <- factors_joined_excess |> select(-risk_free)
+managed_portfolios <- factors_joined_excess |> select(-risk_free)
 #to run for just the industry portfolios
-managed_portfolios <- factors_joined_excess |> select(-risk_free, -mkt_excess, -smb, -hml, -rmw, -cma, -mom)
-print(head(managed_portfolios))
+# managed_portfolios <- factors_joined_excess |> select(-risk_free, -mkt_excess, -smb, -hml, -rmw, -cma, -mom)
+# print(head(managed_portfolios))
 
 # =================================================
 # Functions
@@ -1258,7 +1262,7 @@ time_full_pipeline <- system.time({
     rolling_window = 504,
     distribution = "std",
     should_reestimate = TRUE,
-    reestimation_period = 24,
+    reestimation_period = 12, #24 # Rerunning for annual
     tau = sqrt(0.025),
     lambda_pos = 0.1,
     lambda_neg = 0.1,
@@ -1285,7 +1289,6 @@ head(net_results_full$w_tilde)
 head(net_results_full$penalty)
 head(net_results_full$spillover_pos)
 head(net_results_full$spillover_neg)
-network_vs_benchmark_all
 
 names(network_vs_benchmark_all)
 names(net_results_full)
@@ -2855,3 +2858,141 @@ table_6B_filled <- bind_rows(
 
 cat("\n========== TABLE 6 Panel B: Robustness (Estimation) ==========\n")
 print(table_6B_filled)
+
+managed_portfolios_small <- managed_portfolios %>%
+  filter(date >= as.Date("1971-01-01"),
+         date <= as.Date("1985-12-31")) %>%
+  arrange(date)
+
+
+# Helper to run one NET variant and return monthly NET series
+get_net_series <- function(managed_portfolios_input, reestimation_period, label) {
+
+  net_results <- run_dcc_network_monthly(
+    managed_portfolios = managed_portfolios_input,
+    est_window = 504,
+    min_corr_window = 252,
+    rolling_window = 504,
+    distribution = "std",
+    should_reestimate = TRUE,
+    reestimation_period = reestimation_period,
+    tau = sqrt(0.025),
+    lambda_pos = 0.1,
+    lambda_neg = 0.1,
+    eps = 1e-4,
+    trace = TRUE
+  )
+
+  network_vs_benchmark_all <- net_results$network_vs_benchmark
+
+  # scaling
+  vol_target <- sd(network_vs_benchmark_all$EW_benchmark, na.rm = TRUE)
+  vol_strat_unscaled <- sd(network_vs_benchmark_all$network_return_unscaled, na.rm = TRUE)
+  c_scaling <- vol_target / vol_strat_unscaled
+
+  network_vs_benchmark_all <- network_vs_benchmark_all %>%
+    mutate(net_strategy_return = network_return_unscaled * c_scaling)
+
+  net_monthly <- network_vs_benchmark_all %>%
+    mutate(month = floor_date(date, "month")) %>%
+    group_by(month) %>%
+    summarise(
+      NET = first(net_strategy_return),
+      .groups = "drop"
+    ) %>%
+    rename(!!label := NET)
+
+  weights_df <- as.data.frame(net_results$w_tilde)
+  weights_df$date <- as.Date(rownames(net_results$w_tilde))
+  weights_df <- weights_df %>% arrange(date)
+
+  return(list(
+    returns = net_monthly,
+    weights = weights_df
+  ))
+}
+
+# Run monthly / quarterly / annual
+net_monthly_reest   <- get_net_series(managed_portfolios_small, 1,  "NET_Monthly")
+net_quarterly_reest <- get_net_series(managed_portfolios_small, 3,  "NET_Quarterly")
+net_annual_reest    <- get_net_series(managed_portfolios_small, 12, "NET_Annual")
+
+# Biannual
+net_biannual_reest <- network_vs_benchmark_all %>%
+  mutate(month = floor_date(date, "month")) %>%
+  group_by(month) %>%
+  summarise(
+    NET_Biannual = first(net_strategy_return),
+    .groups = "drop"
+  )
+
+# If your existing biannual object is already small-sample aligned, good.
+# If not, restrict it:
+net_biannual_reest <- net_biannual_reest %>%
+  filter(month >= as.Date("1971-01-01"),
+         month <= as.Date("1985-12-31"))
+
+# Combine all four NET strategies
+net_comp_df <- net_monthly_reest %>%
+  full_join(net_quarterly_reest, by = "month") %>%
+  full_join(net_annual_reest, by = "month") %>%
+  full_join(net_biannual_reest, by = "month") %>%
+  arrange(month) %>%
+  drop_na()
+
+print(head(net_comp_df))
+print(names(net_comp_df))
+
+# Comparison table using existing calculation functions
+table_net_comp <- tibble(
+  Strategy = c("NET_Monthly", "NET_Quarterly", "NET_Annual", "NET_Biannual"),
+  Mean = c(
+    mean(net_comp_df$NET_Monthly,   na.rm = TRUE) * 12 * 100,
+    mean(net_comp_df$NET_Quarterly, na.rm = TRUE) * 12 * 100,
+    mean(net_comp_df$NET_Annual,    na.rm = TRUE) * 12 * 100,
+    mean(net_comp_df$NET_Biannual,  na.rm = TRUE) * 12 * 100
+  ),
+  Gross = c(
+    (prod(1 + net_comp_df$NET_Monthly,   na.rm = TRUE) - 1) * 100,
+    (prod(1 + net_comp_df$NET_Quarterly, na.rm = TRUE) - 1) * 100,
+    (prod(1 + net_comp_df$NET_Annual,    na.rm = TRUE) - 1) * 100,
+    (prod(1 + net_comp_df$NET_Biannual,  na.rm = TRUE) - 1) * 100
+  ),
+  SR = c(
+    compute_SR(net_comp_df$NET_Monthly,   scale = 12),
+    compute_SR(net_comp_df$NET_Quarterly, scale = 12),
+    compute_SR(net_comp_df$NET_Annual,    scale = 12),
+    compute_SR(net_comp_df$NET_Biannual,  scale = 12)
+  )
+)
+
+print(table_net_comp %>%
+  mutate(across(where(is.numeric), ~ round(.x, 4))))
+
+# Alpha table: each strategy only against zero
+alpha_only <- function(r) {
+  fit <- lm(r ~ 1)
+  s <- summary(fit)
+  data.frame(
+    Alpha = coef(fit)[1] * 12 * 100,
+    t_stat = s$coefficients[1, 3]
+  )
+}
+
+table_net_alpha <- bind_rows(
+  alpha_only(net_comp_df$NET_Monthly)   %>% mutate(Strategy = "NET_Monthly"),
+  alpha_only(net_comp_df$NET_Quarterly) %>% mutate(Strategy = "NET_Quarterly"),
+  alpha_only(net_comp_df$NET_Annual)    %>% mutate(Strategy = "NET_Annual"),
+  alpha_only(net_comp_df$NET_Biannual)  %>% mutate(Strategy = "NET_Biannual")
+) %>%
+  select(Strategy, Alpha, t_stat)
+
+print(table_net_alpha %>%
+  mutate(across(where(is.numeric), ~ round(.x, 4))))
+
+table_net_final <- table_net_comp %>%
+  left_join(table_net_alpha, by = "Strategy")
+
+print(table_net_final %>%
+  mutate(across(where(is.numeric), ~ round(.x, 4))))
+
