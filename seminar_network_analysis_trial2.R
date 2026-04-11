@@ -1451,8 +1451,8 @@ cumulative_wealth_df <- combined_returns_plot %>%
     NET = cumprod(1 + net_strategy_return)
   )
 
-png("cumulative_wealth.png", width = 900, height = 600)
-
+#png("cumulative_wealth.png", width = 900, height = 600)
+jpeg("cumulative_wealth.jpeg", width = 900, height = 600, quality = 100)
 axis <- par(lab = c(20, 8, 5))
 max_y <- max(cumulative_wealth_df$NET, cumulative_wealth_df$MVE, na.rm = TRUE)
 
@@ -1487,8 +1487,8 @@ for(i in 12:nrow(combined_returns_plot)){
   rolling_SR_df$SR_NET[i-11] <- mean(combined_returns_plot$net_strategy_return[(i-11):i]) / sd(combined_returns_plot$net_strategy_return[(i-11):i]) * sqrt(12)
 }
 
-png("rolling_sharpe.png", width = 900, height = 600)
-
+# png("rolling_sharpe.png", width = 900, height = 600)
+jpeg("rolling_sharpe.jpeg", width = 900, height = 600, quality = 100)
 plot(x = rolling_SR_df$date, y = rolling_SR_df$SR_EW,
      type = "l", xlab = "Date", ylab = "Rolling SR",
      lty = 1, col = "black",
@@ -1526,8 +1526,8 @@ if (length(net_valid_idx) > 0) {
   drawdown_df$NET_drawdown[first_net:nrow(drawdown_df)] <- net_path / cummax(net_path) - 1
 }
 
-png("drawdown.png", width = 900, height = 600)
-
+# png("drawdown.png", width = 900, height = 600)
+jpeg("drawdown.jpeg", width = 900, height = 600, quality = 100)
 plot(x = drawdown_df$month, y = drawdown_df$EW_drawdown,
      type = "l", ylim = c(-0.6, 0),
      xlab = "Date", ylab = "Drawdown")
@@ -1869,7 +1869,7 @@ weights_gap_df <- NET_weights_df %>%
   ungroup() %>%
   select(date, total_weight_gap)
 
-jpeg("Weights.jpeg", width = 1000, height = 550, quality = 100)
+png("Weights.png", width = 1000, height = 600)
 
 par(lab = c(20, 8, 5), mar = c(4, 4, 2, 1))
 
@@ -1880,7 +1880,7 @@ plot(
   lwd = 2,
   col = "black",
   xlab = "Date",
-  ylab = expression(sum(abs(w[i]^NET - w[i]^MVE)))
+  ylab = "Total absolute difference between NET and MVE weights"
 )
 
 abline(h = pretty(weights_gap_df$total_weight_gap), col = "grey85", lty = 1)
@@ -1916,7 +1916,7 @@ lambda_df <- data.frame(
   filter(date %in% common_dates) %>%
   arrange(date)
 
-png("Lambda+.png", width = 900, height = 600, quality = 100)
+png("Lambda+.png", width = 900, height = 600)
 
 par(lab = c(20, 8, 5), mar = c(4, 4, 2, 1))
 
@@ -1927,14 +1927,14 @@ plot(
   lwd = 2,
   col = "black",
   xlab = "Date",
-  ylab = expression(lambda[m]^"+")
+  ylab = "Postive spillover Penalty"
 )
 
 abline(h = pretty(lambda_df$lambda_pos), col = "grey85", lty = 1)
 
 dev.off()
 
-png("Lambda-.png", width = 900, height = 600, quality = 100)
+png("Lambda-.png", width = 900, height = 600)
 
 par(lab = c(20, 8, 5), mar = c(4, 4, 2, 1))
 
@@ -1945,7 +1945,7 @@ plot(
   lwd = 2,
   col = "black",
   xlab = "Date",
-  ylab = expression(lambda[m]^"-")
+  ylab = "Negative Spillover Reward"
 )
 
 abline(h = pretty(lambda_df$lambda_neg), col = "grey85", lty = 1)
@@ -1957,13 +1957,13 @@ factor_labels <- setNames(toupper(factor_names), factor_names)
 factor_labels["mkt_excess"] <- "MKT"
 
 plot_factor_network_filtered <- function(net_obj, date, type = "positive", top_n = 5, edge_quantile = 0.00) {
-
+  
   idx <- which(as.character(net_obj$summary$date) == as.character(as.Date(date)))
   if (length(idx) == 0) stop("Date not found")
-
+  
   period_id <- net_obj$summary$period[idx]
   pp <- net_obj$per_period[[period_id]]
-
+  
   if (type == "positive") {
     A <- pp$adjacency_pos
     cent <- pp$ec_pos
@@ -1973,46 +1973,46 @@ plot_factor_network_filtered <- function(net_obj, date, type = "positive", top_n
     cent <- pp$ec_neg
     edge_col <- "red"
   }
-
+  
   A <- (A + t(A)) / 2
   diag(A) <- 0
-
+  
   vals <- abs(A[A != 0])
   if (length(vals) > 0 && edge_quantile > 0) {
     cutoff <- quantile(vals, edge_quantile, na.rm = TRUE)
     A[abs(A) < cutoff] <- 0
   }
-
+  
   g <- graph_from_adjacency_matrix(
     A,
     mode = "undirected",
     weighted = TRUE,
     diag = FALSE
   )
-
+  
   cent <- cent[V(g)$name]
   cent[is.na(cent)] <- 0
   cent_norm <- if (max(cent) > 0) cent / max(cent) else cent
-
+  
   top_nodes <- names(sort(cent, decreasing = TRUE))[1:min(top_n, length(cent))]
-
   deg <- degree(g)
-
+  
+  # Slightly larger important nodes, but still compact
   V(g)$size <- ifelse(
     deg == 0,
     2.5,
-    3 + 28 * (cent_norm^1.5)
+    4 + 32 * (cent_norm^1.3)
   )
-
+  
   V(g)$color <- ifelse(
     V(g)$name %in% top_nodes,
     "orange",
     ifelse(deg == 0, "grey97", "grey90")
   )
-
+  
   V(g)$frame.color <- ifelse(V(g)$name %in% top_nodes, "black", NA)
-  V(g)$frame.width <- ifelse(V(g)$name %in% top_nodes, 1.5, 0)
-
+  V(g)$frame.width <- ifelse(V(g)$name %in% top_nodes, 1.2, 0)
+  
   V(g)$label <- ifelse(
     V(g)$name %in% top_nodes,
     ifelse(V(g)$name %in% names(factor_labels),
@@ -2020,39 +2020,55 @@ plot_factor_network_filtered <- function(net_obj, date, type = "positive", top_n
            V(g)$name),
     ""
   )
-
+  
+  # Smaller, cleaner labels inside nodes
+  V(g)$label.cex <- ifelse(V(g)$name %in% top_nodes, 0.75, 0)
+  V(g)$label.color <- "black"
+  V(g)$label.font <- 2
+  
   if (length(E(g)) > 0) {
     max_w <- max(E(g)$weight)
-    E(g)$width <- if (max_w > 0) 0.5 + 3 * (E(g)$weight / max_w) else 0.5
+    E(g)$width <- if (max_w > 0) 0.8 + 2.5 * (E(g)$weight / max_w) else 0.8
   }
-
-  E(g)$color <- adjustcolor(edge_col, alpha.f = 0.3)
-
-  layout <- layout_with_fr(g, niter = 2000)
-
+  
+  E(g)$color <- adjustcolor(edge_col, alpha.f = 0.35)
+  
+  # Layout
+  lay <- layout_with_fr(g, niter = 3000)
+  
+  # Center and rescale layout manually
+  lay[,1] <- lay[,1] - mean(lay[,1])
+  lay[,2] <- lay[,2] - mean(lay[,2])
+  lay <- norm_coords(lay, ymin = -1, ymax = 1, xmin = -1, xmax = 1)
+  
   plot(
     g,
-    layout = layout,
-    main = ifelse(type == "positive",
-                  paste("Contagion network -", date),
-                  paste("Hedging network -", date)),
-    vertex.label.cex = 1.0,
-    vertex.label.color = "black"
+    layout = lay,
+    main = ifelse(
+      type == "positive",
+      paste("Contagion network -", date),
+      paste("Hedging network -", date)
+    ),
+    vertex.label.family = "serif",
+    vertex.label.dist = 0,
+    vertex.label.degree = 0,
+    edge.curved = 0,
+    margin = 0.02
   )
 }
 
 plot_network_pair_filtered <- function(net_obj, date, edge_quantile = 0.00) {
-  par(mfrow = c(1, 2))
+  op <- par(mfrow = c(1, 2), mar = c(1, 1, 3, 1), bg = "white")
   plot_factor_network_filtered(net_obj, date, "positive", top_n = 5, edge_quantile = edge_quantile)
   plot_factor_network_filtered(net_obj, date, "negative", top_n = 5, edge_quantile = edge_quantile)
-  par(mfrow = c(1, 1))
+  par(op)
 }
 
-png("network_graph_2008.png", width = 1200, height = 600)
+png("network_graph_2008.png", width = 1600, height = 800, res = 150)
 plot_network_pair_filtered(net_results_full, "2008-09-30", edge_quantile = 0.00)
 dev.off()
 
-png("network_graph_COVID.png", width = 1200, height = 600)
+png("network_graph_COVID.png", width = 1600, height = 800, res = 150)
 plot_network_pair_filtered(net_results_full, "2020-03-31", edge_quantile = 0.00)
 dev.off()
 
