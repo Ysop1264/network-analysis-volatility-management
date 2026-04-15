@@ -81,7 +81,6 @@ returns_df <- managed_portfolios |>
 
 # setting the lenght of the window and adding the observations (for main period there are non-missing tho)
 window_days <- 252
-min_obs     <- 200
 
 
 
@@ -98,25 +97,15 @@ month_end_idx <- month_end_idx[month_end_idx >= window_days]
 # computing the 'distribution'
 corr_df <- purrr::map_dfr(month_end_idx, function(t_idx) {
   
-  idx <- (t_idx - window_days + 1L):t_idx
+  idx <- (t_idx - window_days + 1):t_idx
   R   <- as.matrix(returns_df[idx, asset_cols, drop = FALSE])
   
-  # keep only assets with enough data and non-zero variance
-  non_missing_ok <- colSums(!is.na(R)) >= min_obs
-  sd_ok          <- apply(R, 2, function(x) sd(x, na.rm = TRUE)) > 0
-  keep_cols      <- non_missing_ok & sd_ok
-  
-  R <- R[, keep_cols, drop = FALSE]
-  
-  if (ncol(R) < 2L) {
-    return(NULL)
-  }
-  
   # rolling correlation matrix
-  C <- cor(R, use = "pairwise.complete.obs")
+  C <- cor(R)
   
-  # average correlation of each asset with all others
+  # remove the diagonal entries of the correlation matrix
   diag(C) <- NA_real_
+  
   avg_corr_i <- rowMeans(C, na.rm = TRUE)
   
   tibble(
@@ -126,8 +115,7 @@ corr_df <- purrr::map_dfr(month_end_idx, function(t_idx) {
     q50      = as.numeric(quantile(avg_corr_i, 0.50, na.rm = TRUE)),
     q75      = as.numeric(quantile(avg_corr_i, 0.75, na.rm = TRUE)),
     q90      = as.numeric(quantile(avg_corr_i, 0.90, na.rm = TRUE)),
-    mean     = mean(avg_corr_i, na.rm = TRUE),
-    n_assets = length(avg_corr_i)
+    mean     = mean(avg_corr_i, na.rm = TRUE)
   )
 })
 
@@ -162,8 +150,8 @@ figure_1 <- ggplot(corr_df, aes(x = date)) +
     title = ""
   ) +
   guides(
-    fill = guide_legend(order = 1),
-    color = guide_legend(order = 2)
+    fill = guide_legend(order = 2),
+    color = guide_legend(order = 1)
   ) +
   theme_minimal(base_size = 14) +
   theme(
@@ -172,6 +160,8 @@ figure_1 <- ggplot(corr_df, aes(x = date)) +
     panel.grid.minor = element_blank()
   )
 
+
+# I am prining it for my R studio console (yall can comment it out)
 print(figure_1)
 
 
