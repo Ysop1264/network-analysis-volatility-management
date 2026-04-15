@@ -42,7 +42,7 @@ library(purrr)
 start_date <- as.Date("1971-01-01")
 end_date   <- as.Date("2026-01-31")
 
-# Code from tidy-fianance website to download data
+# Code from tidy-finance website to download data
 factors_ff5_daily <- download_french_data("Fama/French 5 Factors (2x3) [Daily]")$subsets$data[[1]] |>
   mutate(
     date = ymd(date),
@@ -84,10 +84,10 @@ managed_portfolios <- factors_joined_excess |> select(-risk_free)
 # managed_portfolios <- factors_joined_excess |> select(-risk_free, -mkt_excess, -smb, -hml, -rmw, -cma, -mom)
 # print(head(managed_portfolios))
 
-# =================================================
+
 # Functions
-# =================================================
-#' Compute the MVE static weights
+
+# Compute the MVE static weights
 #'
 #'
 #' @param mu Vector of means
@@ -109,51 +109,52 @@ compute_SR <- function(r){
   return(SR)
 }
 
-#'Creates the summary statistics table of managed portfolios returns.
-#'The means, standard deviations are annualized and in percentages.
-#'The min and max are in percentages.
-#'The Sharpe Ratio is annualized.
-#'
-#'@param factor_returns data frame containing the returns of managed portfolios
-#'@return returns the data frame with summary statistics
-#'
-summary_stats_table <- function(factor_returns){
-  if(class(factor_returns[[1]]) == "Date"){
-    factor_returns <- factor_returns[,-1, drop = FALSE]
-  }
-  
-  means <- colMeans(factor_returns) * 100 * 252
-  sd <- sapply(factor_returns, sd) * 100 * sqrt(252)
-  kurtosis <- sapply(factor_returns, kurtosis)
-  skewness <- sapply(factor_returns, skewness)
-  min <- sapply(factor_returns, min) * 100
-  max <- sapply(factor_returns, max) * 100
-  Sharpe <- means/sd
-  
-  df <- data.frame(
-    Mean = round(means,4),
-    SD = round(sd, 4),
-    Kurtosis = round(kurtosis, 4),
-    Skewness = round(skewness, 4),
-    Min = round(min, 4),
-    Max = round(max, 4),
-    SR = round(Sharpe,4)
-    
-  )
-  return(df)
-}
+#' #'Creates the summary statistics table of managed portfolios returns.
+#' #'The means, standard deviations are annualized and in percentages.
+#' #'The min and max are in percentages.
+#' #'The Sharpe Ratio is annualized.
+#' #'
+#' #'@param factor_returns data frame containing the returns of managed portfolios
+#' #'@return returns the data frame with summary statistics
+#' #'
+#' summary_stats_table <- function(factor_returns){
+#'   if(class(factor_returns[[1]]) == "Date"){
+#'     factor_returns <- factor_returns[,-1, drop = FALSE]
+#'   }
+#'   
+#'   means <- colMeans(factor_returns) * 100 * 252
+#'   sd <- sapply(factor_returns, sd) * 100 * sqrt(252)
+#'   kurtosis <- sapply(factor_returns, kurtosis)
+#'   skewness <- sapply(factor_returns, skewness)
+#'   min <- sapply(factor_returns, min) * 100
+#'   max <- sapply(factor_returns, max) * 100
+#'   Sharpe <- means/sd
+#'   
+#'   df <- data.frame(
+#'     Mean = round(means,4),
+#'     SD = round(sd, 4),
+#'     Kurtosis = round(kurtosis, 4),
+#'     Skewness = round(skewness, 4),
+#'     Min = round(min, 4),
+#'     Max = round(max, 4),
+#'     SR = round(Sharpe,4)
+#'     
+#'   )
+#'   return(df)
+#' }
+#' 
+#' #'Creates the short summary statistics table of managed portfolios returns.
+#' #'The means, standard deviations are annualized and in percentages.
+#' #'The min and max are in percentages.
+#' #'The Sharpe Ratio is annualized.
+#' #'
+#' #'@param factor_returns data frame containing the returns of managed portfolios
+#' #'@return returns the data frame with summary statistics
+#' #'
+#' summary_stats_short_table <- function(factor_returns){
+#'   return(t(summary_stats_table(factor_returns)))
+#' }
 
-#'Creates the short summary statistics table of managed portfolios returns.
-#'The means, standard deviations are annualized and in percentages.
-#'The min and max are in percentages.
-#'The Sharpe Ratio is annualized.
-#'
-#'@param factor_returns data frame containing the returns of managed portfolios
-#'@return returns the data frame with summary statistics
-#'
-summary_stats_short_table <- function(factor_returns){
-  return(t(summary_stats_table(factor_returns)))
-}
 
 #' Graphs the standard line plot of annualized returns
 #'
@@ -171,8 +172,6 @@ graph_annualized_returns <- function(returns_df){
   y_ticks <- pretty(returns_df[[2]] * 252)
   abline(h = y_ticks, col = "grey85", lty = 1)
   lines(y = returns_df[[2]] * 252 , x = as.Date(returns_df[[1]]))
-  
-  
 }
 
 
@@ -257,7 +256,7 @@ garch_estimate_single <- function(
   return(results_list)
 }
 
-
+#This function takes the whole dataset and runs GARCH individually for each assets
 #'
 #'Estimates GARCH(1,1) model for each return series
 #' @param returns_df dataframe with dates as the first column, and managed portfolio as all other columns
@@ -324,17 +323,12 @@ creating_inputs_for_DCC <-  function(returns_df, univariate_garch_models){
 #'@param residuals_matrix matrix of standardized returns for DCC estimation
 #'
 #'@return C target matrix
-# create_target_matrix <- function(residuals_matrix){
-#   C <- cov2cor(nlshrink_cov(residuals_matrix))
-#   return(C)
-# }
-
 create_target_matrix <- function(residuals_matrix){
   S <- nlshrink_cov(residuals_matrix)
   
-  if (!is.matrix(S) || nrow(S) != ncol(S)) {
-    stop("nlshrink_cov did not return a square matrix")
-  }
+  # if (!is.matrix(S) || nrow(S) != ncol(S)) {
+  #   stop("nlshrink_cov did not return a square matrix")
+  # }
   
   C <- cov2cor(S)
   C <- make_psd(C)
@@ -373,11 +367,9 @@ estimate_dcc_parameters <- function(dcc_inputs, target_C = NULL) {
   })
   
   if (!is.null(dcc_fit)) {
-    cat("\n===== xdcclarge object structure =====\n")
     print(class(dcc_fit))
     print(names(dcc_fit))
     str(dcc_fit, max.level = 2)
-    cat("======================================\n")
   }
   
   if (!is.null(dcc_fit)) {
@@ -392,14 +384,14 @@ estimate_dcc_parameters <- function(dcc_inputs, target_C = NULL) {
       beta_hat  <- as.numeric(dcc_fit$b)
     }
     
-    # Top-level par, if it exists
+    # Top-level parameters, if it exists
     if ((is.null(alpha_hat) || is.null(beta_hat)) &&
         !is.null(dcc_fit$par) && length(dcc_fit$par) >= 2) {
       alpha_hat <- as.numeric(dcc_fit$par[1])
       beta_hat  <- as.numeric(dcc_fit$par[2])
     }    
     
-    # result$par, which is what your object actually uses
+    # result$par (list of parameters) , which is what your object actually uses
     if ((is.null(alpha_hat) || is.null(beta_hat)) &&
         !is.null(dcc_fit$result) &&
         !is.null(dcc_fit$result$par) &&
@@ -408,7 +400,7 @@ estimate_dcc_parameters <- function(dcc_inputs, target_C = NULL) {
       beta_hat  <- as.numeric(dcc_fit$result$par[2])
     }    
     
-    # para, just in case
+    # parameter, just in case
     if ((is.null(alpha_hat) || is.null(beta_hat)) &&
         !is.null(dcc_fit$para) && length(dcc_fit$para) >= 2) {
       alpha_hat <- as.numeric(dcc_fit$para[1])
@@ -450,9 +442,11 @@ estimate_dcc_parameters <- function(dcc_inputs, target_C = NULL) {
     a <- par[1]; b <- par[2]
     if (a < 0 || b < 0 || (a + b) >= 0.999) return(1e12)
     
-    Tn <- nrow(Z); N <- ncol(Z)
-    Q_prev <- S; ll <- 0
-    
+    Tn <- nrow(Z)
+    N <- ncol(Z)
+    Q_prev <- S
+    ll <- 0
+    #updates the DCC correlation - driving matrix Q_t
     for (t in seq_len(Tn)) {
       zlag <- if (t == 1) rep(0, N) else Z[t-1, ]
       zlag[!is.finite(zlag)] <- 0
@@ -460,14 +454,14 @@ estimate_dcc_parameters <- function(dcc_inputs, target_C = NULL) {
       Q_t <- (1 - a - b) * S + a * tcrossprod(zlag) + b * Q_prev
       Q_t <- (Q_t + t(Q_t)) / 2
       
-      # Normalising Q to get R
+      # Normalising Q to get R which is the conditional correlation matrix 
       qd <- sqrt(pmax(diag(Q_t), 1e-10))
       Dinv <- diag(1/qd, nrow = length(qd))
       R_t <- Dinv %*% Q_t %*% Dinv
       diag(R_t) <- 1
       
       # Ridge regularisation
-      R_reg <- R_t + diag(1e-8, N)
+      R_reg <- R_t + diag(1e-8, N) 
       
       # Cholesky decomposition for faster computation
       U <- tryCatch(chol(R_reg), error = function(e) NULL)
@@ -737,12 +731,12 @@ network_centrality <- function(adjacency_pos, adjacency_neg) {
 }
 
 # Spillover measures to get the systemic risk exposure
-# @param adjacency_pos Positive adjacency matrix
-# @param adjacency_neg Negative adjacency matrix
-# @param ec_pos EC+
-# @param ec_neg EC-
-# @param sigma_vec Vector of volatilities
-# @return List with spillover_pos and spillover_neg
+#' @param adjacency_pos Positive adjacency matrix
+#' @param adjacency_neg Negative adjacency matrix
+#' @param ec_pos EC+
+#' @param ec_neg EC-
+#' @param sigma_vec Vector of volatilities
+#' @return List with spillover_pos and spillover_neg
 spillovers <- function(adjacency_pos, adjacency_neg, ec_pos, ec_neg, sigma_vec) {
   # column vector
   sigma_vec <- as.numeric(sigma_vec)
@@ -1025,27 +1019,6 @@ run_dcc_network_monthly <- function(managed_portfolios,
       
       months_since_estimation <- months_since_estimation + 1
     }
-    # else {
-    
-    #   # Re-filter with frozen params but updated in-sample residuals for Q_T
-    #   insample_df <- managed_portfolios[blk$insample_idx, ]
-    
-    #   garch_models <- tryCatch(
-    #     estimate_all_univariate_garch(insample_df, est_window = est_window,
-    #                                   distribution = distribution),
-    #     error = function(e) {
-    #       message("  GARCH refit failed, using frozen: ", e$message)
-    #       NULL
-    #     }
-    #   )
-    
-    #   if (is.null(garch_models)) {
-    #     garch_models <- frozen_garch_models
-    #   }
-    
-    #   dcc_inputs <- creating_inputs_for_DCC(insample_df, garch_models)
-    #   months_since_estimation <- months_since_estimation + 1
-    # }
     
     # Step 6: Run DCC path to recover terminal Q_T
     Z_insample <- dcc_inputs$residuals_std
@@ -1226,29 +1199,6 @@ run_dcc_network_monthly <- function(managed_portfolios,
   )
 }
 
-# # Test on smaller subset first
-# system.time({
-#  test_result <- run_dcc_network_monthly(
-#     managed_portfolios = managed_portfolios,
-#     est_window = 504,
-#     min_corr_window = 252,
-#     rolling_window = 504,
-#     distribution = "std",
-#     should_reestimate = TRUE,
-#     reestimation_period = 24,
-#     tau = 0.05,
-#     lambda_pos = 0.1,
-#     lambda_neg = 0.1,
-#     eps = 1e-4,
-#     trace = TRUE
-#   )
-# })
-
-# test_result$summary
-# test_result$network_vs_benchmark
-# head(test_result$w_tilde)
-# head(test_result$penalty)
-# rowSums(abs(test_result$w_tilde))
 
 # Run for full sample
 cat("Rows in full sample:", nrow(managed_portfolios), "\n")
@@ -1274,27 +1224,6 @@ time_full_pipeline <- system.time({
 print(time_full_pipeline)
 
 network_vs_benchmark_all <- net_results_full$network_vs_benchmark
-
-# Scaling the network returns to match EW volatility
-vol_target <- sd(network_vs_benchmark_all$EW_benchmark, na.rm = TRUE)
-vol_strat_unscaled <- sd(network_vs_benchmark_all$network_return_unscaled, na.rm = TRUE)
-c_scaling <- vol_target / vol_strat_unscaled
-
-network_vs_benchmark_all <- network_vs_benchmark_all %>%
-  mutate(net_strategy_return = network_return_unscaled * c_scaling)
-
-# inspect
-names(net_results_full$summary)
-head(net_results_full$w_tilde)
-head(net_results_full$penalty)
-head(net_results_full$spillover_pos)
-head(net_results_full$spillover_neg)
-
-names(network_vs_benchmark_all)
-names(net_results_full)
-
-
-
 # =================================================
 # Benchmarks
 # =================================================
@@ -1410,6 +1339,27 @@ sharpe_ratios_benchmarks <- tibble(
 # Creating data frame for later regressions
 benchmarks_returns <- EW_returns_df |> left_join(MVE_returns_df, by = "month")
 colnames(benchmarks_returns) <- c("month", "EW", "MVE")
+
+# Scaling the network returns to match EW volatility
+vol_target <- sd(MVE_returns_df$monthly_return, na.rm = TRUE)
+vol_strat_unscaled <- sd(network_vs_benchmark_all$network_return_unscaled, na.rm = TRUE)
+c_scaling <- vol_target / vol_strat_unscaled
+
+network_vs_benchmark_all <- network_vs_benchmark_all %>%
+  mutate(net_strategy_return = network_return_unscaled * c_scaling)
+
+# inspect
+names(net_results_full$summary)
+head(net_results_full$w_tilde)
+head(net_results_full$penalty)
+head(net_results_full$spillover_pos)
+head(net_results_full$spillover_neg)
+
+names(network_vs_benchmark_all)
+names(net_results_full)
+
+
+
 
 
 # ====================================
@@ -1718,7 +1668,7 @@ compute_turnover_drift <- function(returns_df, weights_df, half_turnover = FALSE
   }
   
   # Normalize target weights to gross exposure = 1
-  W <- W_raw  #/ rowSums(abs(W_raw))
+  W <- W_raw # / rowSums(abs(W_raw))
   
   n <- nrow(W)
   turnover <- rep(NA_real_, n)
@@ -1739,7 +1689,7 @@ compute_turnover_drift <- function(returns_df, weights_df, half_turnover = FALSE
       next
     }
     
-    w_pre <- pos_pre #/ gross_pre
+    w_pre <- pos_pre # / gross_pre
     
     raw_turnover <- sum(abs(W[t, ] - w_pre), na.rm = TRUE)
     
@@ -1861,7 +1811,7 @@ weights_gap_df <- NET_weights_df %>%
     total_weight_gap = sum(
       abs(
         c_across(ends_with("_NET")) -
-        c_across(ends_with("_MVE"))
+          c_across(ends_with("_MVE"))
       ),
       na.rm = TRUE
     )
@@ -1896,13 +1846,13 @@ names(net_results_full$per_period[[1]])
 
 lambda_df <- data.frame(
   date_raw = as.Date(net_results_full$summary$date),
-
+  
   lambda_pos = sapply(net_results_full$per_period, function(x) {
     A_pos <- x$adjacency_pos
     if (all(A_pos == 0)) return(0)
     max(Re(eigen(A_pos, only.values = TRUE)$values))
   }),
-
+  
   lambda_neg = sapply(net_results_full$per_period, function(x) {
     A_neg <- x$adjacency_neg
     if (all(A_neg == 0)) return(0)
@@ -2883,7 +2833,7 @@ managed_portfolios_small <- managed_portfolios %>%
 
 # Helper to run one NET variant and return monthly NET series
 get_net_series <- function(managed_portfolios_input, reestimation_period, label) {
-
+  
   net_results <- run_dcc_network_monthly(
     managed_portfolios = managed_portfolios_input,
     est_window = 504,
@@ -2898,17 +2848,17 @@ get_net_series <- function(managed_portfolios_input, reestimation_period, label)
     eps = 1e-4,
     trace = TRUE
   )
-
+  
   network_vs_benchmark_all <- net_results$network_vs_benchmark
-
+  
   # scaling
   vol_target <- sd(network_vs_benchmark_all$EW_benchmark, na.rm = TRUE)
   vol_strat_unscaled <- sd(network_vs_benchmark_all$network_return_unscaled, na.rm = TRUE)
   c_scaling <- vol_target / vol_strat_unscaled
-
+  
   network_vs_benchmark_all <- network_vs_benchmark_all %>%
     mutate(net_strategy_return = network_return_unscaled * c_scaling)
-
+  
   net_monthly <- network_vs_benchmark_all %>%
     mutate(month = floor_date(date, "month")) %>%
     group_by(month) %>%
@@ -2917,11 +2867,11 @@ get_net_series <- function(managed_portfolios_input, reestimation_period, label)
       .groups = "drop"
     ) %>%
     rename(!!label := NET)
-
+  
   weights_df <- as.data.frame(net_results$w_tilde)
   weights_df$date <- as.Date(rownames(net_results$w_tilde))
   weights_df <- weights_df %>% arrange(date)
-
+  
   return(list(
     returns = net_monthly,
     weights = weights_df
@@ -2983,7 +2933,7 @@ table_net_comp <- tibble(
 )
 
 print(table_net_comp %>%
-  mutate(across(where(is.numeric), ~ round(.x, 4))))
+        mutate(across(where(is.numeric), ~ round(.x, 4))))
 
 # Alpha table: each strategy only against zero
 alpha_only <- function(r) {
@@ -3004,11 +2954,10 @@ table_net_alpha <- bind_rows(
   select(Strategy, Alpha, t_stat)
 
 print(table_net_alpha %>%
-  mutate(across(where(is.numeric), ~ round(.x, 4))))
+        mutate(across(where(is.numeric), ~ round(.x, 4))))
 
 table_net_final <- table_net_comp %>%
   left_join(table_net_alpha, by = "Strategy")
 
 print(table_net_final %>%
-  mutate(across(where(is.numeric), ~ round(.x, 4))))
-
+        mutate(across(where(is.numeric), ~ round(.x, 4))))
