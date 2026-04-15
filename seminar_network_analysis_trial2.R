@@ -1,23 +1,23 @@
 #### Uncomment if packages not installed
-install.packages("tidyverse")
-install.packages("tidyfinance")
-install.packages("scales")
-install.packages("frenchdata")
-install.packages("dplyr")
-install.packages("moments")
-install.packages("sandwich")
-install.packages("rlang")
-install.packages("lmtest")
-install.packages("lubridate")
-install.packages("nlshrink")
-install.packages("rugarch")
-install.packages("xts")
-install.packages("zoo")
-install.packages("igraph")
-install.packages("PeerPerformance")
-install.packages("xdcclarge")
-install.packages("purrr")
-install.packages("tidyr")
+# install.packages("tidyverse")
+# install.packages("tidyfinance")
+# install.packages("scales")
+# install.packages("frenchdata")
+# install.packages("dplyr")
+# install.packages("moments")
+# install.packages("sandwich")
+# install.packages("rlang")
+# install.packages("lmtest")
+# install.packages("lubridate")
+# install.packages("nlshrink")
+# install.packages("rugarch")
+# install.packages("xts")
+# install.packages("zoo")
+# install.packages("igraph")
+# install.packages("PeerPerformance")
+# install.packages("xdcclarge")
+# install.packages("purrr")
+# install.packages("tidyr")
 ####
 
 library(rlang)
@@ -1718,7 +1718,7 @@ compute_turnover_drift <- function(returns_df, weights_df, half_turnover = FALSE
   }
   
   # Normalize target weights to gross exposure = 1
-  W <- W_raw / rowSums(abs(W_raw))
+  W <- W_raw  #/ rowSums(abs(W_raw))
   
   n <- nrow(W)
   turnover <- rep(NA_real_, n)
@@ -1739,7 +1739,7 @@ compute_turnover_drift <- function(returns_df, weights_df, half_turnover = FALSE
       next
     }
     
-    w_pre <- pos_pre / gross_pre
+    w_pre <- pos_pre #/ gross_pre
     
     raw_turnover <- sum(abs(W[t, ] - w_pre), na.rm = TRUE)
     
