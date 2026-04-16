@@ -1341,26 +1341,12 @@ benchmarks_returns <- EW_returns_df |> left_join(MVE_returns_df, by = "month")
 colnames(benchmarks_returns) <- c("month", "EW", "MVE")
 
 # Scaling the network returns to match EW volatility
-vol_target <- sd(MVE_returns_df$monthly_return, na.rm = TRUE)
+vol_target <- sd(MVE_returns_df$MVE_strategy_return, na.rm = TRUE)
 vol_strat_unscaled <- sd(network_vs_benchmark_all$network_return_unscaled, na.rm = TRUE)
 c_scaling <- vol_target / vol_strat_unscaled
 
 network_vs_benchmark_all <- network_vs_benchmark_all %>%
   mutate(net_strategy_return = network_return_unscaled * c_scaling)
-
-# inspect
-names(net_results_full$summary)
-head(net_results_full$w_tilde)
-head(net_results_full$penalty)
-head(net_results_full$spillover_pos)
-head(net_results_full$spillover_neg)
-
-names(network_vs_benchmark_all)
-names(net_results_full)
-
-
-
-
 
 # ====================================
 # Generating figures
@@ -1378,6 +1364,8 @@ network_monthly <- network_vs_benchmark_all %>%
 combined_returns <- benchmarks_returns %>%
   left_join(network_monthly, by = "month") %>%
   arrange(month)
+
+head(combined_returns)
 
 # Keep only months where all plotted strategies exist
 combined_returns_plot <- combined_returns %>%
