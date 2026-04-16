@@ -1774,6 +1774,24 @@ turnover_vec_MVE <- compute_turnover_drift(
   weights_df = MVE_weights_df
 )
 
+EW_weights_df <- asset_returns_monthly %>%
+  select(date) %>%
+  mutate(across(
+    .cols = date,
+    .fns = ~ .x
+  ))
+
+n_assets <- ncol(asset_returns_monthly) - 1
+
+EW_weights_df <- data.frame(
+  date = asset_returns_monthly$date,
+  matrix(
+    rep(1 / n_assets, nrow(asset_returns_monthly) * n_assets),
+    nrow = nrow(asset_returns_monthly),
+    ncol = n_assets
+  )
+)
+
 # Maing some more figures here, because I changed the weights
 # ====================================
 # Figure data: NET vs MVE weight differences
@@ -2086,7 +2104,7 @@ print(table_1)
 #   Columns: Strategy, Turnover, Net mean return, Net volatility, Net SR, MDD
 #   Rows: BH, MVE, NET
 
-create_table_2 <- function(returns_df, turnover_vec = NULL, turnover_vec_MVE = NULL) {
+create_table_2 <- function(returns_df, turnover_vec = NULL, turnover_vec_MVE = NULL,  turnover_vec_EW = NULL) {
   
   # returns_df should have columns: date, EW, MVE, NET
   returns_only <- returns_df %>% select(EW, MVE, NET)
@@ -2138,6 +2156,12 @@ create_table_2 <- function(returns_df, turnover_vec = NULL, turnover_vec_MVE = N
     NA_real_
   }
   
+  avg_turnover_EW <- if (!is.null(turnover_vec_EW)) {
+    mean(turnover_vec_EW, na.rm = TRUE)
+  } else {
+    NA_real_
+  }
+  
   # MDD
   mdd_EW  <- max_drawdown(returns_df$EW)  * 100
   mdd_MVE <- max_drawdown(returns_df$MVE) * 100
@@ -2178,7 +2202,7 @@ create_table_2 <- function(returns_df, turnover_vec = NULL, turnover_vec_MVE = N
   
   panel_B <- data.frame(
     Strategy = c("BH", "MVE", "NET"),
-    Turnover = c(sprintf("%.4f", 0),
+    Turnover = c(sprintf("%.4f", avg_turnover_EW),
                  sprintf("%.4f", avg_turnover_MVE),
                  sprintf("%.4f", avg_turnover_NET)),
     Net_Mean = c(sprintf("%.2f", gross_mean["EW"]),
