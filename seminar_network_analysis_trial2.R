@@ -1774,12 +1774,7 @@ turnover_vec_MVE <- compute_turnover_drift(
   weights_df = MVE_weights_df
 )
 
-EW_weights_df <- asset_returns_monthly %>%
-  select(date) %>%
-  mutate(across(
-    .cols = date,
-    .fns = ~ .x
-  ))
+EW_weights_df <- asset_returns_monthly %>% select(date)
 
 n_assets <- ncol(asset_returns_monthly) - 1
 
