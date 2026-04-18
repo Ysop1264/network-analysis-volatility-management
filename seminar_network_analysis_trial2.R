@@ -1305,7 +1305,6 @@ MVE_weights_df <- data.frame(
   check.names = FALSE
 )
 
-
 ### Equally weighted buy-and-hold
 no_of_factors <- dim(managed_portfolios[,-1])[2]
 b_EW <- as.matrix(rep(1/no_of_factors, no_of_factors))
@@ -1341,7 +1340,7 @@ benchmarks_returns <- EW_returns_df |> left_join(MVE_returns_df, by = "month")
 colnames(benchmarks_returns) <- c("month", "EW", "MVE")
 
 # Scaling the network returns to match EW volatility
-vol_target <- sd(MVE_returns_df$MVE_strategy_return, na.rm = TRUE)
+vol_target <- sd(EW_returns_df$monthly_return, na.rm = TRUE)
 vol_strat_unscaled <- sd(network_vs_benchmark_all$network_return_unscaled, na.rm = TRUE)
 c_scaling <- vol_target / vol_strat_unscaled
 
@@ -1787,6 +1786,10 @@ EW_weights_df <- data.frame(
   )
 )
 
+turnover_vec_EW <- compute_turnover_drift(
+  returns_df = asset_returns_monthly,
+  weights_df = EW_weights_df
+)
 # Maing some more figures here, because I changed the weights
 # ====================================
 # Figure data: NET vs MVE weight differences
@@ -2221,7 +2224,8 @@ create_table_2 <- function(returns_df, turnover_vec = NULL, turnover_vec_MVE = N
 table_2 <- create_table_2(
   returns_df = returns_for_tables,
   turnover_vec = turnover_vec_NET,
-  turnover_vec_MVE = turnover_vec_MVE
+  turnover_vec_MVE = turnover_vec_MVE,
+  turnover_vec_EW = turnover_vec_EW
 )
 
 cat("\n========== TABLE 2 Panel A: Benchmark Comparison ==========\n")
@@ -2585,7 +2589,7 @@ time_small <- system.time({
     rolling_window = 504,
     distribution = "std",
     should_reestimate = TRUE,
-    reestimation_period = 24,
+    reestimation_period = 12,
     tau = 0.05,
     lambda_pos = 0.1,
     lambda_neg = 0.1,
@@ -2616,14 +2620,20 @@ EW_df_small <- tibble(
   filter(month > end_date_estimation)
 
 # MVE benchmark for small universe
-mp_est_small <- managed_portfolios_small |> filter(date >= start_date_estimation & date <= end_date_estimation)
+mp_est_small <- managed_portfolios_small |>
+  filter(date >= start_date_estimation & date <= end_date_estimation)
+
 mu_small <- as.matrix(colMeans(mp_est_small[,-1]))
 sigma_small <- as.matrix(linshrink_cov(as.matrix(mp_est_small[,-1])))
+
 b_small <- compute_MVE_weights(mu_small, sigma_small)
+
+# target 10% annualized in-sample vol for the static MVE portfolio
 vol_mve_small <- sd(as.matrix(mp_est_small[,-1]) %*% b_small) * sqrt(252)
 b_small <- b_small * 0.1 / vol_mve_small
 
 MVE_ret_small <- as.matrix(managed_portfolios_small[,-1]) %*% b_small
+
 MVE_df_small <- tibble(
   date = managed_portfolios_small$date,
   month = floor_date(date, "month"),
@@ -2632,20 +2642,37 @@ MVE_df_small <- tibble(
 
 rv_lag_small <- MVE_df_small |>
   group_by(month) |>
-  summarise(n_of_days = n(), rv = sum((MVE_return - mean(MVE_return))^2), .groups = "drop") |>
+  summarise(
+    n_of_days = n(),
+    rv = sum((MVE_return - mean(MVE_return))^2),
+    .groups = "drop"
+  ) |>
   mutate(rv_lag = lag(rv)) |>
   select(month, rv_lag)
 
 MVE_df_small <- MVE_df_small |>
   group_by(month) |>
-  summarise(monthly_return = prod(1 + MVE_return) - 1, .groups = "drop") |>
+  summarise(
+    monthly_return = prod(1 + MVE_return) - 1,
+    .groups = "drop"
+  ) |>
   left_join(rv_lag_small, by = "month") |>
   filter(!is.na(rv_lag)) |>
-  mutate(MVE_scaled = monthly_return / rv_lag)
+  mutate(
+    MVE_scaled = monthly_return / rv_lag
+  )
 
-c_mve_small <- sd(MVE_df_small$monthly_return) / sd(MVE_df_small$MVE_scaled)
-MVE_df_small$MVE_strategy_return <- MVE_df_small$MVE_scaled * c_mve_small
-MVE_df_small <- MVE_df_small |> filter(month > end_date_estimation) |>
+# scale managed MVE to match EW volatility in the OOS sample
+target_vol_small <- sd(EW_df_small$monthly_return, na.rm = TRUE)
+oos_idx_small <- MVE_df_small$month > end_date_estimation
+
+c_mve_small <- target_vol_small / sd(MVE_df_small$MVE_scaled[oos_idx_small], na.rm = TRUE)
+
+MVE_df_small <- MVE_df_small |>
+  mutate(
+    MVE_strategy_return = MVE_scaled * c_mve_small
+  ) |>
+  filter(month > end_date_estimation) |>
   select(month, MVE_strategy_return)
 
 # Step 5: Combine into returns_for_tables format
@@ -2837,8 +2864,7 @@ managed_portfolios_small <- managed_portfolios %>%
          date <= as.Date("1985-12-31")) %>%
   arrange(date)
 
-
-# Helper to run one NET variant and return monthly NET series
+# Helper to run one NET variant and return monthly NET series + weights
 get_net_series <- function(managed_portfolios_input, reestimation_period, label) {
   
   net_results <- run_dcc_network_monthly(
@@ -2858,7 +2884,7 @@ get_net_series <- function(managed_portfolios_input, reestimation_period, label)
   
   network_vs_benchmark_all <- net_results$network_vs_benchmark
   
-  # scaling
+  # Scale to EW benchmark volatility
   vol_target <- sd(network_vs_benchmark_all$EW_benchmark, na.rm = TRUE)
   vol_strat_unscaled <- sd(network_vs_benchmark_all$network_return_unscaled, na.rm = TRUE)
   c_scaling <- vol_target / vol_strat_unscaled
@@ -2867,7 +2893,10 @@ get_net_series <- function(managed_portfolios_input, reestimation_period, label)
     mutate(net_strategy_return = network_return_unscaled * c_scaling)
   
   net_monthly <- network_vs_benchmark_all %>%
-    mutate(month = floor_date(date, "month")) %>%
+    mutate(
+      date = as.Date(date),
+      month = floor_date(date, "month")
+    ) %>%
     group_by(month) %>%
     summarise(
       NET = first(net_strategy_return),
@@ -2879,44 +2908,46 @@ get_net_series <- function(managed_portfolios_input, reestimation_period, label)
   weights_df$date <- as.Date(rownames(net_results$w_tilde))
   weights_df <- weights_df %>% arrange(date)
   
-  return(list(
+  list(
     returns = net_monthly,
-    weights = weights_df
-  ))
+    weights = weights_df,
+    raw = net_results
+  )
 }
 
-# Run monthly / quarterly / annual
-net_monthly_reest   <- get_net_series(managed_portfolios_small, 1,  "NET_Monthly")
-net_quarterly_reest <- get_net_series(managed_portfolios_small, 3,  "NET_Quarterly")
-net_annual_reest    <- get_net_series(managed_portfolios_small, 12, "NET_Annual")
+net_monthly_reest   <- get_net_series(managed_portfolios_small, 1, "NET_Monthly")
+net_quarterly_reest <- get_net_series(managed_portfolios_small, 3, "NET_Quarterly")
+net_biannual_reest <- get_net_series(managed_portfolios_small, 24, "NET_Biannual")
 
-# Biannual
-net_biannual_reest <- network_vs_benchmark_all %>%
-  mutate(month = floor_date(date, "month")) %>%
+
+vol_target <- sd(network_vs_benchmark_all$EW_benchmark, na.rm = TRUE)
+vol_strat_unscaled <- sd(network_vs_benchmark_all$network_return_unscaled, na.rm = TRUE)
+c_scaling <- vol_target / vol_strat_unscaled
+
+net_annual_reest <- network_vs_benchmark_all %>%
+  mutate(
+    date = as.Date(date),
+    net_strategy_return = network_return_unscaled * c_scaling,
+    month = floor_date(date, "month")
+  ) %>%
   group_by(month) %>%
   summarise(
-    NET_Biannual = first(net_strategy_return),
+    NET_Annual = first(net_strategy_return),
     .groups = "drop"
-  )
-
-# If your existing biannual object is already small-sample aligned, good.
-# If not, restrict it:
-net_biannual_reest <- net_biannual_reest %>%
+  ) %>%
   filter(month >= as.Date("1971-01-01"),
          month <= as.Date("1985-12-31"))
 
-# Combine all four NET strategies
-net_comp_df <- net_monthly_reest %>%
-  full_join(net_quarterly_reest, by = "month") %>%
+net_comp_df <- net_monthly_reest$returns %>%
+  full_join(net_quarterly_reest$returns, by = "month") %>%
   full_join(net_annual_reest, by = "month") %>%
-  full_join(net_biannual_reest, by = "month") %>%
+  full_join(net_biannual_reest$returns, by = "month") %>%
   arrange(month) %>%
-  drop_na()
+  drop_na(NET_Monthly, NET_Quarterly, NET_Annual, NET_Biannual)
 
 print(head(net_comp_df))
 print(names(net_comp_df))
 
-# Comparison table using existing calculation functions
 table_net_comp <- tibble(
   Strategy = c("NET_Monthly", "NET_Quarterly", "NET_Annual", "NET_Biannual"),
   Mean = c(
@@ -2939,10 +2970,11 @@ table_net_comp <- tibble(
   )
 )
 
-print(table_net_comp %>%
-        mutate(across(where(is.numeric), ~ round(.x, 4))))
+print(
+  table_net_comp %>%
+    mutate(across(where(is.numeric), ~ round(.x, 4)))
+)
 
-# Alpha table: each strategy only against zero
 alpha_only <- function(r) {
   fit <- lm(r ~ 1)
   s <- summary(fit)
@@ -2960,11 +2992,15 @@ table_net_alpha <- bind_rows(
 ) %>%
   select(Strategy, Alpha, t_stat)
 
-print(table_net_alpha %>%
-        mutate(across(where(is.numeric), ~ round(.x, 4))))
+print(
+  table_net_alpha %>%
+    mutate(across(where(is.numeric), ~ round(.x, 4)))
+)
 
 table_net_final <- table_net_comp %>%
   left_join(table_net_alpha, by = "Strategy")
 
-print(table_net_final %>%
-        mutate(across(where(is.numeric), ~ round(.x, 4))))
+print(
+  table_net_final %>%
+    mutate(across(where(is.numeric), ~ round(.x, 4)))
+)
