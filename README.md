@@ -6,7 +6,7 @@
 
 
 # Object definitions:
-# Data section (Kornel)
+# Data section
 
 Important: 
 - `start_date` - start date of the dataset (including)
@@ -20,7 +20,7 @@ Important:
 For manipulation:
 - `factors_joined` - joined Fama & French factors with momentum factor and industry managed portfolios (raw data)
 
-### Benchmarks section (Kornel)
+### Benchmarks section
 
 Important:
 - `start_date_estimation` - start date of the estimation period

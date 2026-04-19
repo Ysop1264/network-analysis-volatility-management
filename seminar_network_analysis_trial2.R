@@ -109,53 +109,6 @@ compute_SR <- function(r){
   return(SR)
 }
 
-#' #'Creates the summary statistics table of managed portfolios returns.
-#' #'The means, standard deviations are annualized and in percentages.
-#' #'The min and max are in percentages.
-#' #'The Sharpe Ratio is annualized.
-#' #'
-#' #'@param factor_returns data frame containing the returns of managed portfolios
-#' #'@return returns the data frame with summary statistics
-#' #'
-#' summary_stats_table <- function(factor_returns){
-#'   if(class(factor_returns[[1]]) == "Date"){
-#'     factor_returns <- factor_returns[,-1, drop = FALSE]
-#'   }
-#'   
-#'   means <- colMeans(factor_returns) * 100 * 252
-#'   sd <- sapply(factor_returns, sd) * 100 * sqrt(252)
-#'   kurtosis <- sapply(factor_returns, kurtosis)
-#'   skewness <- sapply(factor_returns, skewness)
-#'   min <- sapply(factor_returns, min) * 100
-#'   max <- sapply(factor_returns, max) * 100
-#'   Sharpe <- means/sd
-#'   
-#'   df <- data.frame(
-#'     Mean = round(means,4),
-#'     SD = round(sd, 4),
-#'     Kurtosis = round(kurtosis, 4),
-#'     Skewness = round(skewness, 4),
-#'     Min = round(min, 4),
-#'     Max = round(max, 4),
-#'     SR = round(Sharpe,4)
-#'     
-#'   )
-#'   return(df)
-#' }
-#' 
-#' #'Creates the short summary statistics table of managed portfolios returns.
-#' #'The means, standard deviations are annualized and in percentages.
-#' #'The min and max are in percentages.
-#' #'The Sharpe Ratio is annualized.
-#' #'
-#' #'@param factor_returns data frame containing the returns of managed portfolios
-#' #'@return returns the data frame with summary statistics
-#' #'
-#' summary_stats_short_table <- function(factor_returns){
-#'   return(t(summary_stats_table(factor_returns)))
-#' }
-
-
 #' Graphs the standard line plot of annualized returns
 #'
 #'@param returns_df data frame containing date as first column, and returns as second column
@@ -325,15 +278,9 @@ creating_inputs_for_DCC <-  function(returns_df, univariate_garch_models){
 #'@return C target matrix
 create_target_matrix <- function(residuals_matrix){
   S <- nlshrink_cov(residuals_matrix)
-  
-  # if (!is.matrix(S) || nrow(S) != ncol(S)) {
-  #   stop("nlshrink_cov did not return a square matrix")
-  # }
-  
   C <- cov2cor(S)
   C <- make_psd(C)
   diag(C) <- 1
-  
   return(C)
 }
 
@@ -1224,9 +1171,8 @@ time_full_pipeline <- system.time({
 print(time_full_pipeline)
 
 network_vs_benchmark_all <- net_results_full$network_vs_benchmark
-# =================================================
+
 # Benchmarks
-# =================================================
 # Defining the estimation sample
 start_date_estimation <- as.Date("1971-01-01")
 end_date_estimation <- as.Date("1973-01-01")
@@ -1347,9 +1293,7 @@ c_scaling <- vol_target / vol_strat_unscaled
 network_vs_benchmark_all <- network_vs_benchmark_all %>%
   mutate(net_strategy_return = network_return_unscaled * c_scaling)
 
-# ====================================
 # Generating figures
-# ====================================
 # Building monthly network returns with aligned dates
 network_monthly <- network_vs_benchmark_all %>%
   mutate(month = floor_date(date, "month")) %>%
@@ -1379,7 +1323,6 @@ returns_for_tables <- combined_returns %>%
   ) %>%
   drop_na()
 
-# Build cumulative wealth safely
 # Build cumulative wealth on common sample
 cumulative_wealth_df <- combined_returns_plot %>%
   mutate(
@@ -1388,7 +1331,6 @@ cumulative_wealth_df <- combined_returns_plot %>%
     NET = cumprod(1 + net_strategy_return)
   )
 
-#png("cumulative_wealth.png", width = 900, height = 600)
 jpeg("cumulative_wealth.jpeg", width = 900, height = 600, quality = 100)
 axis <- par(lab = c(20, 8, 5))
 max_y <- max(cumulative_wealth_df$NET, cumulative_wealth_df$MVE, na.rm = TRUE)
@@ -1424,7 +1366,6 @@ for(i in 12:nrow(combined_returns_plot)){
   rolling_SR_df$SR_NET[i-11] <- mean(combined_returns_plot$net_strategy_return[(i-11):i]) / sd(combined_returns_plot$net_strategy_return[(i-11):i]) * sqrt(12)
 }
 
-# png("rolling_sharpe.png", width = 900, height = 600)
 jpeg("rolling_sharpe.jpeg", width = 900, height = 600, quality = 100)
 plot(x = rolling_SR_df$date, y = rolling_SR_df$SR_EW,
      type = "l", xlab = "Date", ylab = "Rolling SR",
@@ -1463,7 +1404,6 @@ if (length(net_valid_idx) > 0) {
   drawdown_df$NET_drawdown[first_net:nrow(drawdown_df)] <- net_path / cummax(net_path) - 1
 }
 
-# png("drawdown.png", width = 900, height = 600)
 jpeg("drawdown.jpeg", width = 900, height = 600, quality = 100)
 plot(x = drawdown_df$month, y = drawdown_df$EW_drawdown,
      type = "l", ylim = c(-0.6, 0),
@@ -1482,19 +1422,7 @@ legend("bottomright", legend = c("BH", "MVE", "NET"),
 
 dev.off()
 
-sum(is.na(cumulative_wealth_df$NET))
-sum(is.na(cumulative_wealth_df$MVE))
-
-sum(is.infinite(cumulative_wealth_df$NET))
-sum(is.infinite(cumulative_wealth_df$MVE))
-
-which(is.na(cumulative_wealth_df$NET))[1:10]
-
-cumulative_wealth_df[which(is.na(cumulative_wealth_df$NET)), ]
-
-# ================================================
 # Performance evaluation and alpha testing
-# ================================================
 #scale = 12 for monthly data -> annualising the metrics
 # scale = 252 for daily
 annualized_mean <- function(r, scale = 12) {
@@ -1790,11 +1718,8 @@ turnover_vec_EW <- compute_turnover_drift(
   returns_df = asset_returns_monthly,
   weights_df = EW_weights_df
 )
-# Maing some more figures here, because I changed the weights
-# ====================================
-# Figure data: NET vs MVE weight differences
-# ====================================
 
+# Figure data: NET vs MVE weight differences
 common_assets <- intersect(
   colnames(NET_weights_df),
   colnames(MVE_weights_df)
@@ -1844,10 +1769,7 @@ dev.off()
 str(net_results_full$per_period, max.level = 2)
 names(net_results_full$per_period[[1]])
 
-# ====================================
-# Compute lambdas from adjacency matrices
-# ====================================
-
+# Computing lambdas from adjacency matrices
 lambda_df <- data.frame(
   date_raw = as.Date(net_results_full$summary$date),
   
@@ -2026,23 +1948,10 @@ png("network_graph_COVID.png", width = 1600, height = 800, res = 150)
 plot_network_pair_filtered(net_results_full, "2020-03-31", edge_quantile = 0.00)
 dev.off()
 
-idx <- which(as.character(net_results_full$summary$date) == "2020-03-31")
-pp <- net_results_full$per_period[[net_results_full$summary$period[idx]]]
+png("network_graph_1989.png", width = 1600, height = 800, res = 150)
+plot_network_pair_filtered(net_results_full, "31-03-1989", edge_quantile = 0.00)
+dev.off()
 
-sum(pp$adjacency_pos != 0)
-sum(pp$adjacency_neg != 0)
-
-summary(pp$adjacency_pos[pp$adjacency_pos != 0])
-summary(pp$adjacency_neg[pp$adjacency_neg != 0])
-
-max(pp$ec_pos)
-max(pp$ec_neg)
-
-mean(pp$adjacency_pos)
-mean(pp$adjacency_neg)
-
-sum(pp$adjacency_pos > 0)
-sum(pp$adjacency_neg > 0)
 # ========================================
 # TABLE CREATION — All tables from Section 5
 # ========================================
