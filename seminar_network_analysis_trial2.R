@@ -1581,7 +1581,7 @@ compute_turnover_drift <- function(returns_df, weights_df, half_turnover = FALSE
   if (nrow(W_raw) != nrow(R)) {
     stop("weights_df and returns_df must have the same number of rows.")
   }
-  
+
   W <- W_raw
   
   n <- nrow(W)
@@ -2442,48 +2442,72 @@ print(table_7B)
 #' @param kappa transaction cost (default 10bps)
 #'
 #' @return one-row data frame
-fill_robustness_row <- function(net_strategy_return, ew_benchmark,
-                                w_tilde_mat = NULL,
+fill_robustness_row <- function(strategy_df,
+                                weights_df = NULL,
                                 asset_returns_monthly = NULL,
                                 param_name, param_value,
                                 kappa = 0.001,
                                 half_turnover = FALSE) {
   
-  sr <- mean(net_strategy_return, na.rm = TRUE) /
-    sd(net_strategy_return, na.rm = TRUE) * sqrt(12)
+  strategy_df <- strategy_df %>%
+    arrange(date)
   
-  alpha_ew <- alpha_test(net_strategy_return, ew_benchmark)$alpha
+  sr <- mean(strategy_df$net_strategy_return, na.rm = TRUE) /
+    sd(strategy_df$net_strategy_return, na.rm = TRUE) * sqrt(12)
   
-  mdd <- max_drawdown(net_strategy_return) * 100
+  alpha_ew <- alpha_test(
+    strategy_df$net_strategy_return,
+    strategy_df$ew_benchmark
+  )$alpha
+  
+  mdd <- max_drawdown(strategy_df$net_strategy_return) * 100
   
   avg_turnover <- NA_real_
   net_sr <- NA_real_
   
-  if (!is.null(w_tilde_mat) && !is.null(asset_returns_monthly)) {
+  if (!is.null(weights_df) && !is.null(asset_returns_monthly)) {
     
-    if (nrow(w_tilde_mat) != nrow(asset_returns_monthly)) {
-      stop("w_tilde_mat and asset_returns_monthly must have the same number of rows.")
-    }
+    common_dates <- Reduce(intersect, list(
+      strategy_df$date,
+      weights_df$date,
+      asset_returns_monthly$date
+    ))
     
-    weights_df <- data.frame(
-      date = asset_returns_monthly$date,
-      w_tilde_mat,
-      check.names = FALSE
+    strategy_df_aligned <- strategy_df %>%
+      filter(date %in% common_dates) %>%
+      arrange(date)
+    
+    # Use only the asset columns that exist in BOTH objects
+    asset_cols <- intersect(
+      names(asset_returns_monthly)[-1],
+      names(weights_df)[-1]
     )
     
+    weights_df_aligned <- weights_df %>%
+      select(date, all_of(asset_cols)) %>%
+      filter(date %in% common_dates) %>%
+      arrange(date)
+    
+    asset_returns_aligned <- asset_returns_monthly %>%
+      select(date, all_of(asset_cols)) %>%
+      filter(date %in% common_dates) %>%
+      arrange(date)
+    
+    if (!(nrow(strategy_df_aligned) == nrow(weights_df_aligned) &&
+          nrow(weights_df_aligned) == nrow(asset_returns_aligned))) {
+      stop("Inputs could not be aligned by date.")
+    }
+    
     turnover_vec <- compute_turnover_drift(
-      returns_df = asset_returns_monthly,
-      weights_df = weights_df,
+      returns_df = asset_returns_aligned,
+      weights_df = weights_df_aligned,
       half_turnover = half_turnover
     )
     
     avg_turnover <- mean(turnover_vec, na.rm = TRUE)
     
-    if (length(net_strategy_return) != length(turnover_vec)) {
-      stop("net_strategy_return and turnover_vec must have the same length.")
-    }
-    
-    net_ret <- net_strategy_return - (kappa * ifelse(is.na(turnover_vec), 0, turnover_vec))
+    net_ret <- strategy_df_aligned$net_strategy_return -
+      kappa * ifelse(is.na(turnover_vec), 0, turnover_vec)
     
     net_sr <- mean(net_ret, na.rm = TRUE) /
       sd(net_ret, na.rm = TRUE) * sqrt(12)
@@ -2673,32 +2697,58 @@ run_robustness_variant <- function(managed_portfolios,
   
   if (is.null(res)) {
     return(data.frame(
-      Parameter = variant_name, Value = as.character(variant_value),
-      SR = "FAILED", Alpha_EW = "–", Turnover = "–", Net_SR = "–", MDD = "–",
+      Parameter = variant_name,
+      Value = as.character(variant_value),
+      SR = "FAILED",
+      Alpha_EW = "–",
+      Turnover = "–",
+      Net_SR = "–",
+      MDD = "–",
       stringsAsFactors = FALSE
     ))
   }
   
   # Scale returns
   nvb <- res$network_vs_benchmark
-  c_sc <- sd(nvb$EW_benchmark, na.rm = TRUE) / sd(nvb$network_return_unscaled, na.rm = TRUE)
-  net_ret <- nvb$network_return_unscaled * c_sc
+  c_sc <- sd(nvb$EW_benchmark, na.rm = TRUE) /
+    sd(nvb$network_return_unscaled, na.rm = TRUE)
   
-  # Align with EW benchmark
-  nvb$month <- floor_date(nvb$date, "month")
-  aligned <- nvb %>%
-    mutate(net_strategy_return = network_return_unscaled * c_sc) %>%
+  # Build strategy_df_robust
+  nvb <- nvb %>%
+    mutate(
+      date = as.Date(date),
+      month = floor_date(date, "month"),
+      net_strategy_return = network_return_unscaled * c_sc
+    )
+  
+  strategy_df_robust <- nvb %>%
     left_join(benchmarks_returns, by = "month") %>%
+    transmute(
+      date = month,
+      net_strategy_return = net_strategy_return,
+      ew_benchmark = EW
+    ) %>%
     drop_na()
+  
+  # Build weights_df_robust the same way as in Table 2
+  NET_weights_df_robust <- data.frame(
+    date_raw = as.Date(res$summary$date),
+    res$w_tilde,
+    check.names = FALSE
+  ) %>%
+    mutate(month = floor_date(date_raw, "month")) %>%
+    left_join(canonical_months, by = "month") %>%
+    mutate(date = coalesce(date, date_raw)) %>%
+    select(date, everything(), -month, -date_raw)
   
   # Fill the row
   fill_robustness_row(
-    net_strategy_return = aligned$net_strategy_return,
-    ew_benchmark = aligned$EW,
-    w_tilde_mat = res$w_tilde,
+    strategy_df = strategy_df_robust,
+    weights_df = NET_weights_df_robust,
     asset_returns_monthly = asset_returns_monthly,
     param_name = variant_name,
-    param_value = as.character(variant_value)
+    param_value = variant_value,
+    kappa = 0.001
   )
 }
 
