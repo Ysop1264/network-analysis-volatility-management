@@ -416,8 +416,6 @@ Mechanics:
 3. compare the drifted weights to the new target weights,
 4. sum absolute differences.
 
-**Important implementation detail:** the script currently does **not** normalize by gross exposure in the turnover calculation because the normalization lines are commented out.
-
 ### Turnover vectors
 - `turnover_vec_NET`: turnover series for the NET strategy.
 - `turnover_vec_MVE`: turnover series for the MVE strategy.

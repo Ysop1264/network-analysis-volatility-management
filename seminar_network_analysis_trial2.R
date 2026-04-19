@@ -1583,7 +1583,7 @@ compute_turnover_drift <- function(returns_df, weights_df, half_turnover = FALSE
   }
   
   # Normalize target weights to gross exposure = 1
-  W <- W_raw # / rowSums(abs(W_raw))
+  W <- W_raw
   
   n <- nrow(W)
   turnover <- rep(NA_real_, n)
@@ -1604,7 +1604,7 @@ compute_turnover_drift <- function(returns_df, weights_df, half_turnover = FALSE
       next
     }
     
-    w_pre <- pos_pre # / gross_pre
+    w_pre <- pos_pre
     
     raw_turnover <- sum(abs(W[t, ] - w_pre), na.rm = TRUE)
     
