@@ -1582,7 +1582,6 @@ compute_turnover_drift <- function(returns_df, weights_df, half_turnover = FALSE
     stop("weights_df and returns_df must have the same number of rows.")
   }
   
-  # Normalize target weights to gross exposure = 1
   W <- W_raw
   
   n <- nrow(W)
@@ -2445,8 +2444,10 @@ print(table_7B)
 #' @return one-row data frame
 fill_robustness_row <- function(net_strategy_return, ew_benchmark,
                                 w_tilde_mat = NULL,
+                                asset_returns_monthly = NULL,
                                 param_name, param_value,
-                                kappa = 0.001) {
+                                kappa = 0.001,
+                                half_turnover = FALSE) {
   
   sr <- mean(net_strategy_return, na.rm = TRUE) /
     sd(net_strategy_return, na.rm = TRUE) * sqrt(12)
@@ -2455,17 +2456,37 @@ fill_robustness_row <- function(net_strategy_return, ew_benchmark,
   
   mdd <- max_drawdown(net_strategy_return) * 100
   
-  # Turnover
-  if (!is.null(w_tilde_mat) && nrow(w_tilde_mat) > 1) {
-    W <- w_tilde_mat / rowSums(abs(w_tilde_mat))
-    turnover_vec <- c(NA, rowSums(abs(W[-1, ] - W[-nrow(W), ])))
+  avg_turnover <- NA_real_
+  net_sr <- NA_real_
+  
+  if (!is.null(w_tilde_mat) && !is.null(asset_returns_monthly)) {
+    
+    if (nrow(w_tilde_mat) != nrow(asset_returns_monthly)) {
+      stop("w_tilde_mat and asset_returns_monthly must have the same number of rows.")
+    }
+    
+    weights_df <- data.frame(
+      date = asset_returns_monthly$date,
+      w_tilde_mat,
+      check.names = FALSE
+    )
+    
+    turnover_vec <- compute_turnover_drift(
+      returns_df = asset_returns_monthly,
+      weights_df = weights_df,
+      half_turnover = half_turnover
+    )
+    
     avg_turnover <- mean(turnover_vec, na.rm = TRUE)
-    net_ret <- net_strategy_return - kappa * turnover_vec[1:length(net_strategy_return)]
-    net_ret[is.na(net_ret)] <- net_strategy_return[is.na(net_ret)]
-    net_sr <- mean(net_ret, na.rm = TRUE) / sd(net_ret, na.rm = TRUE) * sqrt(12)
-  } else {
-    avg_turnover <- NA
-    net_sr <- NA
+    
+    if (length(net_strategy_return) != length(turnover_vec)) {
+      stop("net_strategy_return and turnover_vec must have the same length.")
+    }
+    
+    net_ret <- net_strategy_return - (kappa * ifelse(is.na(turnover_vec), 0, turnover_vec))
+    
+    net_sr <- mean(net_ret, na.rm = TRUE) /
+      sd(net_ret, na.rm = TRUE) * sqrt(12)
   }
   
   data.frame(
@@ -2675,6 +2696,7 @@ run_robustness_variant <- function(managed_portfolios,
     net_strategy_return = aligned$net_strategy_return,
     ew_benchmark = aligned$EW,
     w_tilde_mat = res$w_tilde,
+    asset_returns_monthly = asset_returns_monthly,
     param_name = variant_name,
     param_value = as.character(variant_value)
   )
